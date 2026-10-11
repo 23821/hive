@@ -1,5 +1,8 @@
 <p align="center">
-  <img width="100%" alt="OpenHive" src="https://asset.acho.io/github/img/banner.gif" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/readme/banner-dark.webp" />
+    <img width="100%" alt="OpenHive. Descreva o resultado; uma agente queen faz crescer a colônia que vai entregá-lo." src="../assets/readme/banner-light.webp" />
+  </picture>
 </p>
 
 <p align="center">
@@ -21,41 +24,41 @@
   <a href="https://www.linkedin.com/company/teamaden/"><img src="https://custom-icon-badges.demolab.com/badge/LinkedIn-0A66C2?logo=linkedin-white&logoColor=fff" alt="LinkedIn" /></a>
 </p>
 
-<h3 align="center">Colônias de agentes de IA que executam os processos do seu negócio.</h3>
+<h3 align="center">Um runtime open source para colônias de agentes de IA que fazem trabalho de verdade para o seu negócio.</h3>
 
 <p align="center">
-  Descreva o resultado que você quer. Uma queen faz ela mesma a primeira parte do trabalho e depois faz crescer uma colônia de agentes worker para terminar o resto em paralelo, com cada resultado registrado em um ledger compartilhado que você pode consultar, retomar e auditar.
+  Diga a uma agente queen do que você precisa. Ela mesma faz a primeira parte para entender o que o trabalho exige e depois passa o resto para quantos workers em paralelo forem necessários. Cada resultado vai para um tracker compartilhado que você pode consultar, auditar e usar para retomar de onde parou.
 </p>
 
 <p align="center">
   <a href="../assets/readme/demo.mp4"><img width="100%" alt="Demo: uma queen de growth pesquisa os lançamentos de cinco produtos no Hacker News com uma colônia de workers em paralelo" src="../assets/readme/demo.webp" /></a>
   <br />
-  <sub>Gravado de uma execução real; só as esperas foram aceleradas. <a href="../assets/readme/demo.mp4">Assista em qualidade máxima (MP4)</a>.</sub>
+  <sub>Uma execução real. Só a digitação e a espera são aceleradas, e o selo mostra em quanto. <a href="../assets/readme/demo.mp4">Assista à execução completa (MP4)</a>.</sub>
 </p>
 
 ## O que você acabou de ver
 
-Um time de growth que está planejando um Show HN quer saber como foram, no Hacker News, os lançamentos de cinco ferramentas para desenvolvedores. Veja o que o Hive fez com essa única mensagem:
+Um time de growth que está preparando um Show HN quer saber como se saíram no Hacker News os próprios lançamentos de cinco ferramentas para desenvolvedores. Veja o que o Hive fez com essa única mensagem:
 
-1. **Você entrega a tarefa a uma queen.** Cada queen é um agente persistente com um papel (aqui, Head of Growth), além de memória e ferramentas próprias.
-2. **Ela faz a única pergunta que muda a resposta:** só os lançamentos originais ou qualquer lançamento? Você escolhe uma opção e ela segue em frente.
-3. **Ela propõe uma colônia, e você confirma.** Cinco produtos são cinco tarefas paralelas, então o chat vira uma colônia: a queen mais quantos agentes worker o trabalho exigir.
-4. **Ela mesma faz uma unidade.** Ela pega o Supabase, o caso mais complicado (a maior thread de lançamento dele não tem "Launch HN" no título), define o que conta como lançamento e registra o método como uma skill reutilizável.
-5. **Ela executa tudo como um playbook:** um worker por produto, em paralelo, cada um seguindo a skill dela e gravando sua linha no tracker da colônia, uma tabela SQLite compartilhada.
-6. **Ela confere cada linha antes de responder.** Os casos de borda continuam visíveis: o Cal.com não teve nenhum lançamento válido com nenhum dos seus dois nomes, então aparece no gráfico como ausente, e não como zero.
+1. **Você entrega a tarefa a uma queen.** As queens são agentes de longa duração, com um papel (aqui, Head of Growth) e memória e ferramentas próprias.
+2. **Ela faz a única pergunta que muda a resposta:** todos os posts de lançamento ou só o lançamento original de cada produto? Você escolhe todos os lançamentos, e ela segue em frente.
+3. **Ela propõe uma colônia, e você aprova.** Cinco produtos são cinco tarefas paralelas, então o chat vira uma colônia: a queen mais quantos agentes worker o trabalho exigir.
+4. **Ela mesma faz uma delas.** Ela começa pelo PostHog, descobre o que conta como um post de lançamento genuíno em vez de uma menção de passagem, confere os números com a API do Hacker News e salva o método como uma skill reutilizável.
+5. **Ela distribui o trabalho.** Um playbook inicia um worker por produto. Cada um segue a skill dela e grava seu resultado no tracker da colônia, uma tabela SQLite compartilhada.
+6. **Ela confere cada linha antes de responder e corrige uma.** O worker do Cal.com contou um post publicado com o nome antigo, Calendso, mas esse post não era um Show HN, um Launch HN nem um lançamento da YC. Ela limpa a linha, e o gráfico mostra o Cal.com como não encontrado, e não como zero.
 
-Nada nesse fluxo foi montado de antemão. Não há grafo de workflow para desenhar: a queen faz a colônia crescer em tempo de execução, e quem registra o que já foi feito e o que falta é o tracker em disco, não a memória de alguém.
+Nada disso foi montado de antemão. Não há grafo de workflow para desenhar: a queen molda a colônia conforme o trabalho avança, e quem controla o que já foi feito e o que falta é um tracker em disco, não uma janela de contexto.
 
 ## Início rápido
 
-**Você precisa de:** Python 3.11+, Node.js 20+ e git. O quickstart instala o `uv` e o `ripgrep` se eles não estiverem instalados e se oferece para instalar o Node.
+**Você vai precisar de** Python 3.11+, Node.js 20+ e git. O quickstart instala o `uv` e o `ripgrep` se estiverem faltando e se oferece para instalar o Node.
 
-**E de um modelo.** O quickstart guia você na configuração de qualquer uma destas opções:
+**E de um modelo.** O quickstart configura qualquer uma destas opções:
 
-- uma chave de API: Anthropic, OpenAI, Google Gemini, Groq, Cerebras ou OpenRouter
-- uma assinatura de ferramenta de código que você já tenha: Claude Code, OpenAI Codex, Kimi Code, MiniMax, Z.AI ou Antigravity
+- uma chave de API da Anthropic, OpenAI, Google Gemini, Groq, Cerebras ou OpenRouter
+- uma assinatura de ferramenta de código que você já paga: Claude Code, OpenAI Codex, Kimi Code, MiniMax, Z.AI ou Antigravity
 - Hive LLM
-- um modelo local via Ollama, sem precisar de chave nenhuma
+- um modelo local via Ollama, sem chave nenhuma
 
 ```bash
 git clone https://github.com/aden-hive/hive.git
@@ -64,23 +67,23 @@ cd hive
 .\quickstart.ps1         # Windows (PowerShell 5.1+)
 ```
 
-O quickstart cria um único ambiente Python para o workspace, guarda sua chave de API em um armazenamento criptografado de credenciais em `~/.hive`, pergunta qual modelo usar, faz o build do dashboard e o abre em `http://127.0.0.1:8787`. Para abri-lo de novo depois, execute `hive open` a partir do repositório.
+O quickstart cria um único ambiente Python para o workspace, guarda sua chave de API criptografada em `~/.hive`, pergunta qual modelo usar, faz o build do dashboard e o abre em `http://127.0.0.1:8787`. Da próxima vez, execute `hive open` a partir do repositório.
 
 > [!NOTE]
-> O Hive é um workspace `uv`, não um pacote pip. O comando `pip install -e .` instala um placeholder que não funciona; use o quickstart.
+> O Hive é um workspace `uv`, não um pacote pip. O `pip install -e .` instala um placeholder que não roda; use o quickstart.
 
-**Depois:** digite uma tarefa na tela inicial e escolha a queen que vai recebê-la, ou abra a **Prompt Library** e envie um prompt pronto direto para a queen para quem ele foi escrito.
+**Depois,** digite uma tarefa na tela inicial e escolha a queen que vai recebê-la, ou abra a **Prompt Library** e envie um prompt pronto direto para a queen para quem ele foi escrito.
 
 ## Como funciona
 
 ```mermaid
 flowchart LR
     You(["Você"]) -->|"descreve o resultado"| Queen["Queen<br/>(agente persistente)"]
-    Queen -->|"propõe uma colônia,<br/>você confirma"| Pilot["Piloto<br/>(uma unidade, feita pela queen)"]
-    Pilot -->|"registra o método"| Skill["Skill + playbook"]
+    Queen -->|"propõe uma colônia,<br/>você aprova"| Pilot["Piloto<br/>(uma unidade, feita pela queen)"]
+    Pilot -->|"salva o método"| Skill["Skill + playbook"]
     Skill -->|"run_worker / run_playbook"| W["Clones de worker<br/>em paralelo"]
     W -->|"tracker_upsert"| T[("Tracker<br/>SQLite compartilhado")]
-    T -->|"SQL: o que está feito,<br/>o que falta"| Queen
+    T -->|"SQL: o que já foi feito,<br/>o que falta"| Queen
     Queen -->|"resposta verificada"| You
 
     style Queen fill:#ffb100,stroke:#cc5d00,color:#333
@@ -88,13 +91,13 @@ flowchart LR
     style W fill:#ff9800,stroke:#cc5d00,color:#fff
 ```
 
-O Hive tem **uma única primitiva de execução**: um agent loop. A queen é um deles; cada worker é um clone dela, com sua própria tarefa, um conjunto mais restrito de ferramentas e um orçamento rígido. A orquestração é uma chamada de ferramenta, não um grafo compilado:
+O Hive tem **uma única primitiva de execução**: o agent loop. A queen é um deles, e cada worker é um clone dela, com sua própria tarefa, um conjunto mais restrito de ferramentas e um orçamento rígido. A orquestração é uma chamada de ferramenta, não um grafo compilado:
 
-- **`run_worker`** distribui as tarefas e retorna na hora, então a queen continua conversando com você enquanto os workers rodam. Por padrão, até quatro rodam ao mesmo tempo; o resto fica na fila. O relatório de cada worker que termina chega à conversa da queen como um novo turno.
-- **O tracker** é o estado compartilhado da colônia. A queen define a tabela e em quais colunas os workers podem escrever; os workers fazem upsert de uma linha por unidade de trabalho; a queen acompanha o progresso com SQL. Ele fica em disco, em `~/.hive/colonies/<name>/tracker/tracker.db`.
-- **`run_playbook`** aplica um protocolo já validado a todas as linhas: retentativas com backoff, lanes com rate limit e uma lista de dead letter para as linhas que continuam falhando. Como "o que falta" é sempre uma consulta nova ao tracker, rodar um playbook de novo retoma a execução de onde ela parou.
+- **`run_worker`** distribui as tarefas e retorna na hora, então a queen continua conversando com você enquanto os workers rodam. Por padrão, quatro rodam ao mesmo tempo; os demais esperam a vez. O relatório de cada worker chega à conversa da queen como um novo turno.
+- **O tracker** é o estado compartilhado da colônia. A queen define a tabela e em quais colunas os workers podem escrever, os workers fazem upsert de uma linha por unidade de trabalho, e a queen acompanha o progresso com SQL. É um arquivo em disco: `~/.hive/colonies/<name>/tracker/tracker.db`.
+- **`run_playbook`** aplica um método já validado a todas as linhas, com retentativas e backoff, lanes com rate limit e uma lista de dead letter para as linhas que continuam falhando. "O que falta" é sempre uma consulta nova ao tracker, então rodar um playbook de novo retoma de onde ele parou.
 
-A **[visão geral da arquitetura](../architecture/README.md)** explica o loop, a superfície de ferramentas, a memória, a supervisão humana e como o estado sobrevive a um crash.
+A **[visão geral da arquitetura](../architecture/README.md)** vai mais fundo: o loop, a superfície de ferramentas, a memória, a supervisão humana e como o estado sobrevive a um crash.
 
 <table>
   <tr>
@@ -103,34 +106,34 @@ A **[visão geral da arquitetura](../architecture/README.md)** explica o loop, a
   </tr>
   <tr>
     <td width="50%"><img alt="O tracker da colônia sendo preenchido com resultados" src="../assets/readme/tracker.webp" /><br /><sub><b>Tracker.</b> Os resultados entram em uma tabela compartilhada à medida que os workers terminam, prontos para consultar, exportar ou retomar a partir deles.</sub></td>
-    <td width="50%"><img alt="A resposta final da queen, com tabela e gráfico com fontes" src="../assets/readme/result.webp" /><br /><sub><b>Resultado.</b> Uma resposta verificada, com fontes e gráfico, no próprio chat.</sub></td>
+    <td width="50%"><img alt="A resposta final da queen, com tabela e gráfico com fontes" src="../assets/readme/result.webp" /><br /><sub><b>Resultado.</b> Uma resposta verificada, com fontes e gráfico, direto no chat.</sub></td>
   </tr>
 </table>
 
 ## O que tem dentro
 
-**Queens com uma função e uma memória.** O Hive vem com treze queens com personas: seis ficam ativas por padrão (Growth, RevOps, Content, Lead Generation, Outbound, Brand & Design), as demais podem ser contratadas no Org Chart, e você pode criar as suas. Cada uma mantém uma memória em markdown com escopo, escrita por uma etapa de reflexão, e conversas anteriores relevantes são trazidas automaticamente para o contexto dela.
+**Queens com uma função e uma memória.** O Hive vem com treze queens, cada uma com sua persona. Seis já vêm ativas (Growth, RevOps, Content, Lead Generation, Outbound e Brand & Design); contrate as demais no Org Chart ou crie as suas. Cada uma faz anotações em uma memória em markdown enquanto trabalha, e conversas anteriores relevantes são trazidas automaticamente para o contexto dela.
 
-**Ferramentas nativas, no mesmo processo.** Comandos de shell e jobs em segundo plano, edição de arquivos, busca rápida em código, PDFs, anexos e imagens, web scraping, gráficos (ECharts e Mermaid), arquivos CSV e geração de imagens com o Hive LLM. Elas rodam dentro do próprio Hive, sem nenhum servidor de ferramentas para iniciar.
+**Ferramentas nativas que rodam no mesmo processo.** Comandos de shell e jobs em segundo plano, edição de arquivos, busca rápida em código, PDFs, anexos e imagens, web scraping, gráficos (ECharts e Mermaid), arquivos CSV e geração de imagens com o Hive LLM. Elas rodam dentro do próprio Hive, sem nenhum servidor de ferramentas para iniciar.
 
-**Seu navegador, controlado pelos seus agentes.** A extensão Hive Browser Bridge permite que os agentes operem o seu próprio Chrome, onde você já está logado. Cada worker ganha seu próprio grupo de abas.
+**Seu navegador, controlado pelos seus agentes.** A extensão Hive Browser Bridge permite que os agentes trabalhem no seu próprio Chrome, onde você já está logado. Cada worker ganha seu próprio grupo de abas.
 
-**Skills.** Instruções reutilizáveis no formato aberto [Agent Skills](https://agentskills.io). O Hive já vem com um conjunto delas, as queens escrevem novas quando um protocolo se prova, e você pode gerenciá-las na Skills Library.
+**Skills.** Instruções reutilizáveis no formato aberto [Agent Skills](https://agentskills.io). O Hive já vem com um conjunto delas, as queens escrevem novas quando um método se mostra eficaz, e você gerencia todas na Skills Library.
 
-**Qualquer servidor MCP.** Adicione um servidor MCP externo com `hive mcp add` e as ferramentas dele entram nas mesmas allowlists das ferramentas nativas. O catálogo completo de integrações em [`tools/`](../../tools/src/aden_tools/tools) (GitHub, Gmail, HubSpot, Slack, Notion e muitas outras) roda como um servidor MCP; veja [docs/tools.md](../tools.md).
+**Qualquer servidor MCP.** Adicione um com `hive mcp add`, e as ferramentas dele entram nas mesmas allowlists das nativas. O catálogo completo de integrações em [`tools/`](../../tools/src/aden_tools/tools) (GitHub, Gmail, HubSpot, Slack, Notion e muitas outras) roda como um servidor MCP; veja [docs/tools.md](../tools.md).
 
-**Roda enquanto você está fora.** As colônias podem se agendar sozinhas com gatilhos de cron, de intervalo ou de webhook. O **Sentinel**, que você ativa por colônia, observa uma queen quando ela para: dá um empurrão para ela continuar ou escala o caso para você pela caixa de entrada do Hive, pelo Telegram ou pelo Slack, e ela retoma o trabalho quando você responde.
+**Roda enquanto você está fora.** As colônias podem acordar sozinhas com gatilhos de cron, de intervalo ou de webhook. O **Sentinel**, que você ativa por colônia, observa uma queen sempre que ela para: dá um empurrão para ela seguir ou escala o caso para você pela caixa de entrada do Hive, pelo Telegram ou pelo Slack, e ela retoma assim que você responde.
 
-**Feito para sobreviver.** Todo agente persiste seu estado em disco e, depois de um crash ou reinício, retoma exatamente de onde parou. Resultados grandes de ferramentas vão para arquivos em vez de inundar o contexto, sessões longas se compactam sozinhas, turnos travados ou em loop são detectados, e todo worker roda com um limite rígido de chamadas de ferramenta.
+**Feito para sobreviver.** Todo agente salva seu estado em disco e, depois de um crash ou reinício, retoma exatamente de onde parou. Resultados grandes de ferramentas vão para arquivos em vez de inundar o contexto, sessões longas se compactam sozinhas, turnos travados ou em loop são detectados, e todo worker roda com um orçamento rígido de chamadas de ferramenta.
 
-**Qualquer modelo.** Tudo o que o [LiteLLM](https://docs.litellm.ai/docs/providers) suporta, incluindo OpenAI, Anthropic, Gemini, OpenRouter, Hive LLM, qualquer endpoint compatível com OpenAI e modelos locais via Ollama. Os workers podem usar um modelo diferente do da sua queen, e modelos só de texto continuam enxergando imagens graças a um fallback de visão.
+**Qualquer modelo.** Tudo o que o [LiteLLM](https://docs.litellm.ai/docs/providers) suporta, incluindo OpenAI, Anthropic, Gemini, OpenRouter, Hive LLM, qualquer endpoint compatível com OpenAI e modelos locais via Ollama. Os workers podem rodar em um modelo diferente do da sua queen, e modelos só de texto continuam enxergando imagens graças a um fallback de visão.
 
 ## O Hive é para você?
 
-O Hive faz sentido quando a parte difícil já não é o modelo, e sim tudo ao redor dele:
+O Hive mostra seu valor quando a parte difícil já não é o modelo, e sim tudo ao redor dele:
 
 - Um processo com **muitas unidades de trabalho parecidas**, como leads, contas, tickets, repositórios ou documentos, que você quer executar em paralelo e sempre do mesmo jeito.
-- Trabalho que **roda por horas ou de forma agendada** e precisa sobreviver a reinícios.
+- Trabalho que **roda por horas ou de forma agendada** e precisa sobreviver a um reinício.
 - Resultados que você precisa **conferir, consultar e auditar**, e não só ler em um chat.
 - Um **humano que continua no comando** das decisões que importam.
 
@@ -155,13 +158,13 @@ Qualquer provedor suportado pelo [LiteLLM](https://docs.litellm.ai/docs/provider
 Sim. Escolha Ollama no quickstart ou configure um modelo como `ollama/llama3` com o Ollama rodando localmente.
 
 **Qual a diferença para outros frameworks de agentes?**
-Na maioria dos frameworks, você desenha um grafo de agentes e conecta as entradas e saídas deles. O Hive tem um único tipo de agente: a queen é um agent loop e cada worker é um clone dela. A orquestração acontece em tempo de execução, por meio de chamadas de ferramenta, e a coordenação passa por um tracker SQL compartilhado, e não por mensagens trocadas ao longo das arestas. Os recursos do harness (persistência, retomada, orçamentos, compactação, supervisão) ficam nesse único loop, então todo agente já vem com eles.
+A maioria dos frameworks pede que você desenhe um grafo de agentes e conecte as entradas e saídas deles. O Hive tem um único tipo de agente: a queen é um agent loop, e cada worker é um clone dela. A orquestração acontece em tempo de execução, por meio de chamadas de ferramenta, e os agentes se coordenam por um tracker SQL compartilhado, em vez de trocar mensagens ao longo das arestas. Persistência, retomada, orçamentos, compactação e supervisão ficam nesse único loop, então todo agente já vem com eles.
 
 **Onde ficam meus dados?**
 Na sua máquina. Sessões, colônias, trackers e memória são arquivos comuns em `~/.hive` (ou onde `HIVE_HOME` apontar), e as chaves de API ficam guardadas ali, criptografadas.
 
 **Como mantenho os custos sob controle?**
-Cada worker roda com limites rígidos de turnos e de chamadas de ferramenta, então um worker travado para sozinho, e a concorrência tem um teto. O uso é medido em cada chamada ao modelo. Ainda não há limites de gasto em dólares.
+Cada worker roda com limites rígidos de turnos e de chamadas de ferramenta, então um worker travado para sozinho, e o número de workers rodando ao mesmo tempo tem um teto. Toda chamada ao modelo é contabilizada. Ainda não há limites de gasto em dólares.
 
 **Os agentes podem usar minhas próprias ferramentas e APIs?**
 Sim: pelo shell e pelo navegador nativos, por qualquer servidor MCP que você adicionar e por skills que ensinam a eles os seus procedimentos.
@@ -171,7 +174,7 @@ Sim, sob a [Licença Apache 2.0](../../LICENSE).
 
 ## Contribuindo
 
-Contribuições são bem-vindas, principalmente ferramentas, integrações e skills ([#2805](https://github.com/aden-hive/hive/issues/2805)). Leia o [CONTRIBUTING.md](../../CONTRIBUTING.md) primeiro e seja atribuído a uma issue antes de abrir um pull request: comente na issue e um mantenedor vai atribuí-la a você. Issues com passos para reproduzir ou com uma proposta têm prioridade.
+Contribuições são bem-vindas, principalmente ferramentas, integrações e skills ([#2805](https://github.com/aden-hive/hive/issues/2805)). Leia o [CONTRIBUTING.md](../../CONTRIBUTING.md) primeiro e seja atribuído a uma issue antes de abrir um pull request: comente na issue e um mantenedor vai atribuí-la a você. Issues com passos para reproduzir ou com uma proposta concreta têm prioridade.
 
 ## Comunidade
 
@@ -187,7 +190,7 @@ Para reportar uma vulnerabilidade, veja o [SECURITY.md](../../SECURITY.md).
 
 ## Licença
 
-Licença Apache 2.0. Veja [LICENSE](../../LICENSE).
+Licença Apache 2.0. Veja o [LICENSE](../../LICENSE).
 
 ## Histórico de estrelas
 
@@ -201,4 +204,4 @@ Licença Apache 2.0. Veja [LICENSE](../../LICENSE).
 
 ---
 
-<p align="center">Feito com 🔥 Paixão em San Francisco</p>
+<p align="center">Feito com 🔥 paixão em San Francisco</p>

@@ -33,7 +33,7 @@
 <p align="center">
   <a href="../assets/readme/demo.mp4"><img width="100%" alt="Demo: uma queen de growth pesquisa os lançamentos de cinco produtos no Hacker News com uma colônia de workers em paralelo" src="../assets/readme/demo.webp" /></a>
   <br />
-  <sub>Gravado de uma execução real; só a espera foi acelerada. <a href="../assets/readme/demo.mp4">Assista em qualidade máxima (MP4)</a>.</sub>
+  <sub>Uma execução real. Só a digitação e a espera são aceleradas, e o selo mostra em quanto. <a href="../assets/readme/demo.mp4">Assista à execução completa (MP4)</a>.</sub>
 </p>
 
 ## O que você acabou de ver
@@ -41,11 +41,11 @@
 Um time de growth que está preparando um Show HN quer saber como se saíram no Hacker News os próprios lançamentos de cinco ferramentas para desenvolvedores. Veja o que o Hive fez com essa única mensagem:
 
 1. **Você entrega a tarefa a uma queen.** As queens são agentes de longa duração, com um papel (aqui, Head of Growth) e memória e ferramentas próprias.
-2. **Ela faz a única pergunta que muda a resposta:** só os lançamentos originais ou qualquer lançamento? Você escolhe, e ela segue em frente.
+2. **Ela faz a única pergunta que muda a resposta:** todos os posts de lançamento ou só o lançamento original de cada produto? Você escolhe todos os lançamentos, e ela segue em frente.
 3. **Ela propõe uma colônia, e você aprova.** Cinco produtos são cinco tarefas paralelas, então o chat vira uma colônia: a queen mais quantos agentes worker o trabalho exigir.
-4. **Ela mesma faz uma delas.** Ela pega o Supabase, o caso mais complicado (a maior thread de lançamento dele não diz "Launch HN"), decide o que conta como lançamento e salva o método como uma skill reutilizável.
+4. **Ela mesma faz uma delas.** Ela começa pelo PostHog, descobre o que conta como um post de lançamento genuíno em vez de uma menção de passagem, confere os números com a API do Hacker News e salva o método como uma skill reutilizável.
 5. **Ela distribui o trabalho.** Um playbook inicia um worker por produto. Cada um segue a skill dela e grava seu resultado no tracker da colônia, uma tabela SQLite compartilhada.
-6. **Ela confere cada linha antes de responder.** Os casos de borda continuam visíveis: o Cal.com não teve nenhum lançamento válido com nenhum dos seus dois nomes, então o gráfico o mostra como ausente, e não como zero.
+6. **Ela confere cada linha antes de responder e corrige uma.** O worker do Cal.com contou um post publicado com o nome antigo, Calendso, mas esse post não era um Show HN, um Launch HN nem um lançamento da YC. Ela limpa a linha, e o gráfico mostra o Cal.com como não encontrado, e não como zero.
 
 Nada disso foi montado de antemão. Não há grafo de workflow para desenhar: a queen molda a colônia conforme o trabalho avança, e quem controla o que já foi feito e o que falta é um tracker em disco, não uma janela de contexto.
 

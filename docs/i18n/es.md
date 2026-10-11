@@ -33,7 +33,7 @@
 <p align="center">
   <a href="../assets/readme/demo.mp4"><img width="100%" alt="Demo: una Queen de growth investiga los lanzamientos en Hacker News de cinco productos con una colonia de trabajadores en paralelo" src="../assets/readme/demo.webp" /></a>
   <br />
-  <sub>Grabado de una ejecución real; solo se aceleraron las esperas. <a href="../assets/readme/demo.mp4">Ver en calidad completa (MP4)</a>.</sub>
+  <sub>Una ejecución real. Solo se aceleran la escritura y las esperas, y la insignia indica cuánto. <a href="../assets/readme/demo.mp4">Ver la ejecución completa (MP4)</a>.</sub>
 </p>
 
 ## Lo que acabas de ver
@@ -41,11 +41,11 @@
 Un equipo de growth que prepara un Show HN quiere saber cómo les fue en Hacker News a los lanzamientos propios de cinco herramientas para desarrolladores. Esto es lo que hizo Hive con ese único mensaje:
 
 1. **Se lo encargas a una Queen.** Las Queens (reinas) son agentes persistentes con un rol (en este caso, Head of Growth) y con memoria y herramientas propias.
-2. **Hace la única pregunta que cambia la respuesta:** ¿solo los lanzamientos originales o cualquier lanzamiento? Tú eliges y ella sigue adelante.
+2. **Hace la única pregunta que cambia la respuesta:** ¿todas las publicaciones de lanzamiento o solo el lanzamiento original de cada producto? Tú eliges todos los lanzamientos y ella sigue adelante.
 3. **Propone una colonia y tú la apruebas.** Cinco productos son cinco trabajos en paralelo, así que el chat se convierte en una colonia: la Queen más tantos agentes trabajadores como necesite el trabajo.
-4. **Hace uno ella misma.** Toma Supabase, el caso complicado (su mayor hilo de lanzamiento no incluye "Launch HN"), decide qué cuenta como lanzamiento y guarda el método como una habilidad (skill) reutilizable.
+4. **Hace uno ella misma.** Empieza por PostHog, determina qué cuenta como una auténtica publicación de lanzamiento y no como una simple mención de pasada, contrasta las cifras con la API de Hacker News y guarda el método como una habilidad (skill) reutilizable.
 5. **Reparte el trabajo.** Un manual (playbook) lanza un trabajador por producto. Cada uno sigue la habilidad que ella guardó y escribe su resultado en el tracker de la colonia, una tabla SQLite compartida.
-6. **Revisa cada fila antes de responder.** Los casos límite quedan a la vista: Cal.com no tuvo ningún lanzamiento válido con ninguno de sus dos nombres, así que el gráfico lo muestra como sin datos, no como cero.
+6. **Revisa cada fila antes de responder y corrige una.** El trabajador de Cal.com contó una publicación hecha con su antiguo nombre, Calendso, pero esa publicación no era un Show HN, ni un Launch HN, ni un lanzamiento de YC. Ella vacía la fila, y el gráfico muestra Cal.com como no encontrado, no como cero.
 
 Nada de esto estaba configurado de antemano. No hay ningún grafo de flujo de trabajo que dibujar: la Queen va dando forma a la colonia a medida que avanza el trabajo, y es un tracker en disco, no una ventana de contexto, el que lleva la cuenta de lo que está hecho y lo que falta.
 

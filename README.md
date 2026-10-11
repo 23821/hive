@@ -33,7 +33,7 @@
 <p align="center">
   <a href="docs/assets/readme/demo.mp4"><img width="100%" alt="Demo: a growth queen researches five products' Hacker News launches with a colony of parallel workers" src="docs/assets/readme/demo.webp" /></a>
   <br />
-  <sub>Recorded from a real run; only the waiting is sped up. <a href="docs/assets/readme/demo.mp4">Watch in full quality (MP4)</a>.</sub>
+  <sub>A real run. Only the typing and the waiting are sped up, and the badge says by how much. <a href="docs/assets/readme/demo.mp4">Watch the full run (MP4)</a>.</sub>
 </p>
 
 ## What you just watched
@@ -41,11 +41,11 @@
 A growth team preparing a Show HN wants to know how five developer tools' own launches did on Hacker News. Here's what Hive did with that one message:
 
 1. **You hand it to a queen.** Queens are long-lived agents with a role (here, Head of Growth) and their own memory and tools.
-2. **She asks the one question that changes the answer:** original launches only, or any launch? You pick, and she carries on.
+2. **She asks the one question that changes the answer:** every launch post, or only each product's original launch? You pick every launch, and she carries on.
 3. **She proposes a colony, and you approve it.** Five products means five parallel jobs, so the chat becomes a colony: the queen plus as many worker agents as the work needs.
-4. **She does one herself.** She takes Supabase, the awkward case (its biggest launch thread doesn't say "Launch HN"), decides what counts as a launch, and saves the method as a reusable skill.
+4. **She does one herself.** She takes PostHog first, works out what counts as a genuine launch post rather than a passing mention, checks the numbers against the Hacker News API, and saves the method as a reusable skill.
 5. **She fans out.** A playbook starts one worker per product. Each follows her skill and writes its result to the colony's tracker, a shared SQLite table.
-6. **She checks every row before she answers.** Edge cases stay visible: Cal.com had no qualifying launch under either of its names, so the chart shows it as missing, not as zero.
+6. **She checks every row before she answers, and fixes one.** Cal.com's worker counted a post from its old name, Calendso, but that post wasn't a Show HN, Launch HN or YC launch. She clears the row, and the chart shows Cal.com as not found rather than zero.
 
 None of this was wired up in advance. There's no workflow graph to draw: the queen shapes the colony as the work unfolds, and a tracker on disk, not a context window, keeps count of what's done and what's left.
 

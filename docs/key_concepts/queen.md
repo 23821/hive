@@ -37,6 +37,8 @@ The through-line is **execute first, then systematize**: she proves the path her
 
 A Queen carries **scoped, evolving memory** — markdown notes kept globally (about you and your business) and per queen. A cooldown-gated reflection step writes durable notes as she works, and a recall selector surfaces the relevant ones on later sessions. She also recalls relevant excerpts of earlier conversations automatically, and can search them herself. This is how a Queen accumulates context about you and your business over time — not a vector database, just files she reflects into and reads back. (Unlike the Queen, workers are memoryless: each starts fresh.)
 
+For past conversations: before each of your messages Hive places up to six dated excerpts from related earlier sessions in front of her, and every past session is searchable with `search_messages`. Her instructions tell her to check this memory before asking you about anything you may have told her already. An optional dated timeline of the events and facts you mention (`search_timeline`) can be turned on with the `memory_timeline` feature flag. How well conversation recall works is measured on LongMemEval in [Memory benchmark](../memory-benchmark.md).
+
 ## What the Queen owns
 
 - **The conversation** — she's the single client-facing surface of the colony.

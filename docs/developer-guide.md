@@ -72,7 +72,6 @@ hive/                                    # Repository root
 │   │   ├── release.yml                  # Runs on tags
 │   │   ├── pr-requirements.yml          # PR requirement checks
 │   │   ├── pr-check-command.yml         # PR check commands
-│   │   ├── claude-issue-triage.yml      # Automated issue triage
 │   │   └── auto-close-duplicates.yml    # Close duplicate issues
 │   ├── ISSUE_TEMPLATE/                  # Bug report & feature request templates
 │   ├── PULL_REQUEST_TEMPLATE.md         # PR description template

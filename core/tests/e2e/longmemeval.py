@@ -123,17 +123,17 @@ def _iter_json_array(path: Path, chunk_chars: int = 1 << 22) -> Any:
             while pos < len(buf) and buf[pos] in " \t\r\n,[":
                 started = started or buf[pos] == "["
                 pos += 1
-            if pos < len(buf) and buf[pos] == "]":
-                return
+            if pos < len(buf) and buf[pos] == "]" and started:
+                return  # the only way to finish: a partial file must not split
             try:
                 if pos >= len(buf):
                     raise ValueError("need more data")
                 value, end = decoder.raw_decode(buf, pos)
             except ValueError:
                 if eof:
-                    if buf[pos:].strip():
-                        raise ValueError(f"truncated JSON array in {path}") from None
-                    return
+                    # Out of data before the closing bracket (or mid-element):
+                    # a download cut short, not a smaller dataset.
+                    raise ValueError(f"truncated JSON array in {path}") from None
                 chunk = fh.read(chunk_chars)
                 eof = not chunk
                 buf = buf[pos:] + chunk

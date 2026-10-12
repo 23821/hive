@@ -309,6 +309,6 @@ def pytest_terminal_summary(terminalreporter: Any, config: pytest.Config) -> Non
 
     report = longmemeval.summarize(results)
     (results.parent / "summary.txt").write_text(f"{report}\n", encoding="utf-8")
-    terminalreporter.write_sep("=", "LongMemEval-S")
+    terminalreporter.write_sep("=", longmemeval.LABEL)
     terminalreporter.write_line(report)
     terminalreporter.write_line(f"results: {results.parent}")

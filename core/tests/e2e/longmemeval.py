@@ -1,6 +1,7 @@
-"""LongMemEval-S, run through the whole system.
+"""LongMemEval (S or M), run through the whole system.
 
-Each question's chat history (~48 sessions, ~120k tokens) is written to an
+Each question's chat history (S: ~48 sessions, ~115k tokens; M: ~500
+sessions, ~1.5M tokens) is written to an
 isolated ``HIVE_HOME`` as finished queen sessions, dated with the
 benchmark's session dates. A real queen is then booted with its clock
 frozen at the question's date and asked the question, as a user would ask
@@ -11,26 +12,42 @@ LongMemEval's own per-type judge prompts.
 What this measures is Hive's memory as shipped, not a reader model: the
 queen never sees the history in its context, only what it retrieves.
 
-Dataset: the 2025 cleaned release of LongMemEval-S
+Dataset: the 2025 cleaned release of LongMemEval S or M
 (https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned), fetched
 on first use into ``$HIVE_LME_DATA`` (default ``<repo>/.cache/longmemeval``)
 and split into one file per question.
 
 Environment:
 
+    HIVE_LME_DATASET      "s" (default) or "m".
+    HIVE_LME_RESUME       "1" to skip questions already in HIVE_LME_RUN_DIR.
     HIVE_LME_QUESTIONS    how many / which questions: an integer (stratified
                           by type, deterministic), "all", or comma-separated
                           question ids. Default 12.
     HIVE_LME_QUEEN        queen to ask. Default queen_technology.
-    HIVE_LME_JUDGE_MODEL  judge model on the live endpoint. Defaults to the
-                          agent model; the paper's judge is gpt-4o.
+    HIVE_LME_JUDGE_MODEL  judge model. Defaults to the agent model. Published
+                          scores use gpt-4o-2024-08-06 (OFFICIAL_JUDGE_MODEL),
+                          which also gets the official 10-token cap.
+    HIVE_LME_JUDGE_API_BASE / HIVE_LME_JUDGE_API_KEY
+                          judge endpoint and key, if not the agent's.
     HIVE_LME_RUN_DIR      where results go. Default a timestamped directory
                           under ``$HIVE_LME_DATA/runs``.
+
+Comparable to published numbers (the queen and the judge both gpt-4o, on
+the OpenAI API): set HIVE_LIVE_API_BASE=https://api.openai.com/v1,
+HIVE_LIVE_API_KEY, HIVE_LIVE_MODEL=gpt-4o-2024-08-06 and the same three for
+the judge. Reference points and re-grading, outside pytest:
+
+    python -m tests.e2e.longmemeval rejudge <run dir>         # official judge
+    python -m tests.e2e.longmemeval reference oracle --out <dir>  # answer sessions only
 """
 
 from __future__ import annotations
 
+import argparse
+import asyncio
 import json
+import math
 import os
 import random
 import re
@@ -45,11 +62,18 @@ import httpx
 
 from tests.e2e import synthetic
 
-DATA_URL = "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+# "s": ~115k tokens of history per question, fits a large context window.
+# "m": ~1.5M tokens per question (~500 sessions), fits none: the condition
+# a memory system exists for.
+VARIANT = os.environ.get("HIVE_LME_DATASET", "s").strip().lower()
+if VARIANT not in ("s", "m"):
+    raise ValueError(f"HIVE_LME_DATASET must be 's' or 'm', got {VARIANT!r}")
+LABEL = f"LongMemEval-{VARIANT.upper()}"
+DATA_URL = f"https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_{VARIANT}_cleaned.json"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = Path(os.environ.get("HIVE_LME_DATA") or REPO_ROOT / ".cache" / "longmemeval")
-RAW_FILE = DATA_DIR / "longmemeval_s_cleaned.json"
-SPLIT_DIR = DATA_DIR / "s_cleaned"
+RAW_FILE = DATA_DIR / f"longmemeval_{VARIANT}_cleaned.json"
+SPLIT_DIR = DATA_DIR / f"{VARIANT}_cleaned"
 QUEEN_ID = os.environ.get("HIVE_LME_QUEEN", "queen_technology")
 
 # The modules whose ``datetime.now()`` tells the queen what time it is: the
@@ -80,21 +104,60 @@ def _download(dest: Path) -> None:
     part.replace(dest)
 
 
+def _iter_json_array(path: Path, chunk_chars: int = 1 << 22) -> Any:
+    """Yield the elements of a top-level JSON array without loading it whole.
+
+    The M release is 2.7 GB; ``json.loads`` on it needs several times that
+    in memory. Elements (one question each, a few MB) are decoded one at a
+    time as enough of the file has been read to hold them.
+    """
+    decoder = json.JSONDecoder()
+    buf = ""
+    pos = 0
+    started = False
+    eof = False
+    with path.open(encoding="utf-8") as fh:
+        while True:
+            # Skip whitespace, the opening bracket and separating commas.
+            while pos < len(buf) and buf[pos] in " \t\r\n,[":
+                started = started or buf[pos] == "["
+                pos += 1
+            if pos < len(buf) and buf[pos] == "]":
+                return
+            try:
+                if pos >= len(buf):
+                    raise ValueError("need more data")
+                value, end = decoder.raw_decode(buf, pos)
+            except ValueError:
+                if eof:
+                    if buf[pos:].strip():
+                        raise ValueError(f"truncated JSON array in {path}") from None
+                    return
+                chunk = fh.read(chunk_chars)
+                eof = not chunk
+                buf = buf[pos:] + chunk
+                pos = 0
+                continue
+            if not started:
+                raise ValueError(f"{path} does not hold a JSON array")
+            yield value
+            pos = end
+
+
 def ensure_split() -> Path:
     """Fetch the dataset if needed and split it into one file per question.
 
     Tests then read only the questions they run, instead of each loading
-    the whole 277 MB file.
+    the whole file (277 MB for S, 2.7 GB for M).
     """
     index_path = SPLIT_DIR / "index.json"
     if index_path.is_file():
         return index_path
     if not RAW_FILE.is_file():
         _download(RAW_FILE)
-    items = json.loads(RAW_FILE.read_text(encoding="utf-8"))
     SPLIT_DIR.mkdir(parents=True, exist_ok=True)
     index = []
-    for item in items:
+    for item in _iter_json_array(RAW_FILE):
         (SPLIT_DIR / f"{item['question_id']}.json").write_text(json.dumps(item), encoding="utf-8")
         index.append(
             {
@@ -209,6 +272,27 @@ async def build_timelines(hive_home: Path, *, api_base: str, api_key: str, model
     )
 
 
+def warm_index(queen_id: str = QUEEN_ID) -> None:
+    """Sync the seeded sessions into the memory index before the queen boots.
+
+    In production the index catches up a little on every search, so it is
+    warm by the time the user asks. Seeding hundreds of sessions at once and
+    then asking would charge that whole catch-up to the first turn, past the
+    automatic recall's time cap, and understate what Hive does.
+    """
+    from memory_tools.index import sync_scope
+
+    sync_scope("queens", queen_id)
+
+
+def done_ids() -> set[str]:
+    """Question ids already recorded in this run, for HIVE_LME_RESUME."""
+    path = run_dir() / "results.jsonl"
+    if not path.is_file():
+        return set()
+    return {json.loads(line)["question_id"] for line in path.read_text(encoding="utf-8").splitlines() if line.strip()}
+
+
 def freeze_clock(monkeypatch: Any, when: datetime) -> None:
     """Make the queen believe it is *when* (naive local time)."""
     import importlib
@@ -277,17 +361,81 @@ def judge_prompt(item: dict[str, Any], response: str) -> str:
     return template.format(item["question"], item["answer"], response)
 
 
-async def judge(item: dict[str, Any], response: str, *, api_base: str, api_key: str, model: str) -> Verdict:
-    """Grade *response* the way LongMemEval does: ``'yes' in reply.lower()``."""
-    body: dict[str, Any] = {"model": model, "messages": [{"role": "user", "content": judge_prompt(item, response)}], "temperature": 0}
-    async with httpx.AsyncClient(timeout=120) as client:
-        resp = await client.post(f"{api_base}/chat/completions", json=body, headers={"Authorization": f"Bearer {api_key}"})
-        if resp.status_code == 400 and "temperature" in resp.text:
-            del body["temperature"]  # reasoning models reject it
+# The judge every published LongMemEval score uses, with the official
+# script's settings (src/evaluation/evaluate_qa.py: temperature 0, 10 tokens).
+OFFICIAL_JUDGE_MODEL = "gpt-4o-2024-08-06"
+OFFICIAL_JUDGE_MAX_TOKENS = 10
+
+
+async def _chat(api_base: str, api_key: str, body: dict[str, Any], *, timeout: float = 300) -> str:
+    """One chat completion; retries rate limits and transient server errors."""
+    delay = 2.0
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for attempt in range(8):
             resp = await client.post(f"{api_base}/chat/completions", json=body, headers={"Authorization": f"Bearer {api_key}"})
-        resp.raise_for_status()
-    raw = (resp.json()["choices"][0]["message"].get("content") or "").strip()
+            if resp.status_code == 400 and "temperature" in resp.text and "temperature" in body:
+                body = {k: v for k, v in body.items() if k != "temperature"}  # reasoning models reject it
+                continue
+            if resp.status_code in (429, 500, 502, 503, 504) and attempt < 7:
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 60)
+                continue
+            resp.raise_for_status()
+            return (resp.json()["choices"][0]["message"].get("content") or "").strip()
+    raise RuntimeError("unreachable")
+
+
+async def judge(
+    item: dict[str, Any],
+    response: str,
+    *,
+    api_base: str,
+    api_key: str,
+    model: str,
+    max_tokens: int | None = None,
+) -> Verdict:
+    """Grade *response* the way LongMemEval does: ``'yes' in reply.lower()``.
+
+    Pass ``max_tokens=OFFICIAL_JUDGE_MAX_TOKENS`` with the official judge;
+    leave it unset for reasoning models, which need room to think.
+    """
+    body: dict[str, Any] = {"model": model, "messages": [{"role": "user", "content": judge_prompt(item, response)}], "temperature": 0}
+    if max_tokens is not None:
+        body["max_tokens"] = max_tokens
+    raw = await _chat(api_base, api_key, body)
     return Verdict(correct="yes" in raw.lower(), raw=raw, judge_model=model)
+
+
+# ---------------------------------------------------------------------------
+# Reference points outside Hive: the official reader on a given history
+# ---------------------------------------------------------------------------
+
+# Verbatim from LongMemEval's src/generation/run_generation.py (history_format
+# "json", cot "true"): the official way to have a model answer from history it
+# is handed directly.
+_READER_PROMPT = (
+    "I will give you several history chats between you and a user. Please answer the question based on the relevant "
+    "chat history. Answer the question step by step: first extract all the relevant information, and then reason over "
+    "the information to get the answer.\n\n\nHistory Chats:\n\n{}\n\nCurrent Date: {}\nQuestion: {}\nAnswer (step by step):"
+)
+
+
+def reader_prompt(item: dict[str, Any], *, oracle: bool) -> str:
+    """The official reading prompt over the answer sessions (*oracle*) or the whole history."""
+    chosen = set(item["answer_session_ids"]) if oracle else None
+    sessions = sorted(
+        (
+            (date, turns)
+            for sid, date, turns in zip(item["haystack_session_ids"], item["haystack_dates"], item["haystack_sessions"], strict=True)
+            if chosen is None or sid in chosen
+        ),
+        key=lambda s: s[0],  # the official script sorts by date only
+    )
+    # The official json format: "\n" + json.dumps(session) as the content.
+    history = "".join(
+        f"\n### Session {i}:\nSession Date: {date}\nSession Content:\n\n{json.dumps(turns)}\n" for i, (date, turns) in enumerate(sessions, 1)
+    )
+    return _READER_PROMPT.format(history, item["question_date"], item["question"])
 
 
 _SPILL_RE = re.compile(r"Full result at: (.+?\.txt)")
@@ -314,8 +462,20 @@ def run_dir() -> Path:
     return path
 
 
-def record(item: dict[str, Any], run: Any, verdict: Verdict, session_map: dict[str, str]) -> dict[str, Any]:
-    """Append one result line and save the transcript. Returns the line."""
+def record(
+    item: dict[str, Any],
+    run: Any,
+    verdict: Verdict,
+    session_map: dict[str, str],
+    *,
+    reader_model: str | None = None,
+    judge_error: BaseException | None = None,
+) -> dict[str, Any]:
+    """Append one result line and save the transcript. Returns the line.
+
+    With *judge_error* the answer is kept but marked ungraded (counted wrong
+    until ``rejudge`` grades it).
+    """
     searches = run.called("search_messages") + run.called("search_timeline")
     seen = " ".join(_full_result(c.result) for c in searches)
     abstention = "_abs" in item["question_id"]
@@ -332,6 +492,7 @@ def record(item: dict[str, Any], run: Any, verdict: Verdict, session_map: dict[s
         "correct": verdict.correct,
         "judge": verdict.raw,
         "judge_model": verdict.judge_model,
+        "reader_model": reader_model,
         "searched": bool(searches),
         "search_calls": [{"tool": c.name, **c.input} for c in searches],
         # Did any evidence session show up in what search returned? Splits
@@ -340,6 +501,8 @@ def record(item: dict[str, Any], run: Any, verdict: Verdict, session_map: dict[s
         "tools": [c.name for c in run.tool_calls],
         "seconds": sum(t.seconds for t in run.turns),
     }
+    if judge_error is not None:
+        line["judge_error"] = f"{type(judge_error).__name__}: {judge_error}"[:500]
     out = run_dir()
     with (out / "results.jsonl").open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(line, default=str) + "\n")
@@ -375,8 +538,23 @@ def record_error(item: dict[str, Any], exc: BaseException) -> None:
         fh.write(json.dumps(line, default=str) + "\n")
 
 
-def summarize(path: Path) -> str:
-    """Per-type accuracy, plus how often the queen searched and found the evidence."""
+def _wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """95% Wilson interval for k successes out of n."""
+    if not n:
+        return 0.0, 0.0
+    p = k / n
+    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return centre - half, centre + half
+
+
+def summarize(path: Path, *, title: str = f"{LABEL} through Hive") -> str:
+    """Accuracy overall (with a 95% CI) and averaged over types, per type, and retrieval diagnostics.
+
+    "Overall" is the share of all questions answered correctly, as the
+    official script and most products report it; "task-averaged" is the
+    unweighted mean of the six type scores, which some (Mastra) report.
+    """
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     if not rows:
         return ""
@@ -388,27 +566,179 @@ def summarize(path: Path) -> str:
     for r in rows:
         groups[r["question_type"]].append(r)
     judge_model = next((r["judge_model"] for r in rows if r.get("judge_model")), "?")
+    reader = next((r["reader_model"] for r in rows if r.get("reader_model")), None)
+    correct = sum(r["correct"] for r in rows)
+    lo, hi = _wilson(correct, len(rows))
+    task_avg = statistics.mean(sum(r["correct"] for r in rs) / len(rs) for rs in groups.values())
+    # Retrieval diagnostics exist only for runs through Hive, not reference runs.
+    hive_run = any("searched" in r for r in rows)
     lines = [
-        f"LongMemEval-S through Hive - {len(rows)} question(s), judge {judge_model}",
-        f"{'type':28} {'n':>4} {'correct':>8} {'searched':>9} {'evidence':>9}",
+        f"{title} - {len(rows)} question(s), {f'reader {reader}, ' if reader else ''}judge {judge_model}",
+        f"overall {100 * correct / len(rows):.1f}% (95% CI {100 * lo:.1f}-{100 * hi:.1f}), task-averaged {100 * task_avg:.1f}%",
+        f"{'type':28} {'n':>4} {'correct':>8}" + (f" {'searched':>9} {'evidence':>9}" if hive_run else ""),
     ]
     for qtype in sorted(groups) + ["ALL"]:
         rs = rows if qtype == "ALL" else groups[qtype]
-        found = [r for r in rs if r["evidence_retrieved"] is not None]
-        lines.append(
-            f"{qtype:28} {len(rs):4} {pct(sum(r['correct'] for r in rs), len(rs)):>8} "
-            f"{pct(sum(r['searched'] for r in rs), len(rs)):>9} "
-            f"{pct(sum(bool(r['evidence_retrieved']) for r in found), len(found)):>9}"
-        )
+        found = [r for r in rs if r.get("evidence_retrieved") is not None]
+        line = f"{qtype:28} {len(rs):4} {pct(sum(r['correct'] for r in rs), len(rs)):>8}"
+        if hive_run:
+            line += (
+                f" {pct(sum(bool(r.get('searched')) for r in rs), len(rs)):>9}"
+                f" {pct(sum(bool(r['evidence_retrieved']) for r in found), len(found)):>9}"
+            )
+        lines.append(line)
     abstain = [r for r in rows if r["abstention"]]
     if abstain:
         lines.append(f"abstention questions: {pct(sum(r['correct'] for r in abstain), len(abstain)).strip()} of {len(abstain)}")
     errors = [r for r in rows if r.get("error")]
     if errors:
         lines.append(f"no gradable answer (timeout/error, counted wrong): {len(errors)}")
-    lines.append(f"median seconds per question: {statistics.median(r['seconds'] for r in rows):.0f}")
-    lines.append(
-        "searched = called search_messages or search_timeline; evidence = an answer session appeared in their results "
-        "(auto-injected excerpts don't count, so 'correct' can exceed both)"
-    )
+    ungraded = [r for r in rows if r.get("judge_error")]
+    if ungraded:
+        lines.append(f"answered but not graded (judge failed; counted wrong until `rejudge`): {len(ungraded)}")
+    seconds = [r["seconds"] for r in rows if r.get("seconds") is not None]
+    if seconds:
+        lines.append(f"median seconds per question: {statistics.median(seconds):.0f}")
+    if hive_run:
+        lines.append(
+            "searched = called search_messages or search_timeline; evidence = an answer session appeared in their results "
+            "(auto-injected excerpts don't count, so 'correct' can exceed both)"
+        )
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# CLI: re-grade a saved run, or run the official reader as a reference point
+# ---------------------------------------------------------------------------
+
+
+async def _gather_limited(coros: list[Any], limit: int) -> list[Any]:
+    gate = asyncio.Semaphore(limit)
+
+    async def run(coro: Any) -> Any:
+        async with gate:
+            return await coro
+
+    return await asyncio.gather(*(run(c) for c in coros))
+
+
+async def rejudge(run: Path, *, api_base: str, api_key: str, model: str, max_tokens: int | None, concurrency: int) -> Path:
+    """Re-grade every saved answer in *run* with another judge. Returns the new results file."""
+    rows = [json.loads(line) for line in (run / "results.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    safe_model = re.sub(r"[^\w.-]", "_", model)
+    out = run / f"rejudged-{safe_model}"
+    out.mkdir(exist_ok=True)
+
+    async def one(row: dict[str, Any]) -> dict[str, Any]:
+        if row.get("error"):
+            return {**row, "judge_model": model}  # no answer to grade; stays wrong
+        row = {k: v for k, v in row.items() if k != "judge_error"}  # graded now
+        item = load_question(row["question_id"])
+        verdict = await judge(item, row["hypothesis"], api_base=api_base, api_key=api_key, model=model, max_tokens=max_tokens)
+        return {**row, "correct": verdict.correct, "judge": verdict.raw, "judge_model": model, "original_judge": row.get("judge_model")}
+
+    graded = await _gather_limited([one(r) for r in rows], concurrency)
+    path = out / "results.jsonl"
+    path.write_text("".join(json.dumps(r, default=str) + "\n" for r in graded), encoding="utf-8")
+    return path
+
+
+async def reference_run(
+    ids: list[str],
+    out: Path,
+    *,
+    oracle: bool,
+    reader: tuple[str, str, str],
+    judge_with: tuple[str, str, str, int | None],
+    concurrency: int,
+) -> Path:
+    """The official reader on the answer sessions (*oracle*) or the whole history, graded by the judge.
+
+    Each result is appended as soon as it is graded, and questions already in
+    the results file are skipped, so a stopped run resumes without paying twice.
+    """
+    reader_base, reader_key, reader_model = reader
+    judge_base, judge_key, judge_model, judge_max = judge_with
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "results.jsonl"
+    done = {json.loads(line)["question_id"] for line in path.read_text(encoding="utf-8").splitlines() if line.strip()} if path.exists() else set()
+
+    async def one(qid: str) -> None:
+        item = load_question(qid)
+        body = {"model": reader_model, "messages": [{"role": "user", "content": reader_prompt(item, oracle=oracle)}], "temperature": 0}
+        try:
+            hypothesis = await _chat(reader_base, reader_key, body)
+            verdict = await judge(item, hypothesis, api_base=judge_base, api_key=judge_key, model=judge_model, max_tokens=judge_max)
+        except Exception as exc:  # e.g. a whole-history prompt over the context window
+            # Counted wrong, like an unanswered question in a Hive run.
+            hypothesis, verdict = "", Verdict(correct=False, raw="", judge_model=judge_model)
+            error = f"{type(exc).__name__}: {exc}"[:500]
+        else:
+            error = None
+        row = {
+            "question_id": qid,
+            "question_type": item["question_type"],
+            "abstention": "_abs" in qid,
+            "question": item["question"],
+            "answer": item["answer"],
+            "hypothesis": hypothesis,
+            "correct": verdict.correct,
+            "judge": verdict.raw,
+            "judge_model": judge_model,
+            "reader_model": reader_model,
+            "condition": "oracle" if oracle else "full-history",
+        }
+        if error:
+            row["error"] = error
+        with path.open("a", encoding="utf-8") as fh:  # single-threaded event loop: no interleaving
+            fh.write(json.dumps(row, default=str) + "\n")
+
+    await _gather_limited([one(q) for q in ids if q not in done], concurrency)
+    return path
+
+
+def _main() -> None:
+    parser = argparse.ArgumentParser(prog="python -m tests.e2e.longmemeval")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    rj = sub.add_parser("rejudge", help="re-grade a saved run with another judge (default: the official one)")
+    rj.add_argument("run", type=Path)
+    ref = sub.add_parser("reference", help="the official reader on the answer sessions or the whole history")
+    ref.add_argument("condition", choices=["oracle", "full-history"])
+    ref.add_argument("--out", type=Path, required=True)
+    ref.add_argument("--questions", default="all")
+    ref.add_argument("--reader-model", default=OFFICIAL_JUDGE_MODEL)
+    ref.add_argument("--reader-api-base", default="https://api.openai.com/v1")
+    for p in (rj, ref):
+        p.add_argument("--judge-model", default=OFFICIAL_JUDGE_MODEL)
+        p.add_argument("--judge-api-base", default="https://api.openai.com/v1")
+        p.add_argument("--concurrency", type=int, default=8)
+    args = parser.parse_args()
+
+    key = os.environ.get("HIVE_LME_JUDGE_API_KEY") or os.environ.get("OPENAI_API_KEY") or ""
+    judge_max = OFFICIAL_JUDGE_MAX_TOKENS if args.judge_model == OFFICIAL_JUDGE_MODEL else None
+    if args.cmd == "rejudge":
+        path = asyncio.run(
+            rejudge(args.run, api_base=args.judge_api_base, api_key=key, model=args.judge_model, max_tokens=judge_max, concurrency=args.concurrency)
+        )
+        title = f"{LABEL} through Hive (re-graded)"
+    else:
+        reader_key = os.environ.get("HIVE_LME_READER_API_KEY") or key
+        ids = select(load_index(), args.questions)
+        path = asyncio.run(
+            reference_run(
+                ids,
+                args.out,
+                oracle=args.condition == "oracle",
+                reader=(args.reader_api_base, reader_key, args.reader_model),
+                judge_with=(args.judge_api_base, key, args.judge_model, judge_max),
+                concurrency=args.concurrency,
+            )
+        )
+        title = f"{LABEL}, official reader, {args.condition}"
+    report = summarize(path, title=title)
+    (path.parent / "summary.txt").write_text(report + "\n", encoding="utf-8")
+    print(report)
+
+
+if __name__ == "__main__":
+    _main()

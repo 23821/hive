@@ -112,7 +112,7 @@ The **[architecture overview](docs/architecture/README.md)** goes deeper: the lo
 
 ## What's inside
 
-**Queens with a job and a memory.** Hive ships thirteen persona queens. Six are active out of the box (Growth, RevOps, Content, Lead Generation, Outbound, and Brand & Design); hire the rest from the Org Chart, or create your own. Each one keeps notes in markdown memory as she works, and relevant past conversations are recalled into her context automatically.
+**Queens with a job and a memory.** Hive ships thirteen persona queens. Six are active out of the box (Growth, RevOps, Content, Lead Generation, Outbound, and Brand & Design); hire the rest from the Org Chart, or create your own. Each one keeps notes in markdown memory as she works, and relevant past conversations are recalled into her context automatically. [Measured on LongMemEval](docs/memory-benchmark.md): 88.4% on S, 82.0% on M.
 
 **Built-in tools that run in-process.** Shell commands and background jobs, file editing, fast code search, PDFs, attachments and images, web scraping, charts (ECharts and Mermaid), CSV files, and image generation through Hive LLM. They run inside Hive itself, with no tool servers to start.
 
@@ -146,6 +146,7 @@ For a single prompt or a one-off script, a plain agent is simpler.
 - Key concepts: [colony](docs/key_concepts/colony.md), [queen](docs/key_concepts/queen.md), [workers](docs/key_concepts/worker_agent.md), [coordination](docs/key_concepts/coordination.md), [the loop](docs/key_concepts/the_loop.md), [goals and outcomes](docs/key_concepts/goals_outcome.md), [how colonies improve](docs/key_concepts/improvement.md)
 - [Tools](docs/tools.md): built-in tools, MCP servers and the integration catalog
 - [Configuration](docs/configuration.md) and the [developer guide](docs/developer-guide.md)
+- [Memory benchmark](docs/memory-benchmark.md): LongMemEval results, methodology and limitations
 - [Roadmap](docs/roadmap.md): what V1 ships and what's still open
 - [docs.adenhq.com](https://docs.adenhq.com/): hosted documentation
 

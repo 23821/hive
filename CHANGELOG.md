@@ -2,15 +2,19 @@
 
 > Full, detailed release notes live in [`docs/releases/`](docs/releases/). The entries below summarize the architecturally significant releases; older entries follow.
 
+## v1.0.0 — Colonies, Built-in Tools, and Measured Memory (unreleased)
+
+**Highlights:** colonies rebuilt around execute-first: a queen does the work herself, then forks a **colony** that coordinates through a shared SQLite **tracker**, spawns worker clones with `run_worker`, and runs at scale with resumable **playbooks** and colony **skills**; **thirteen queens** (five new), and you choose who takes a job; Hive's own tools now **run in-process**, with no tool servers, plus your own Chrome through the `hive-browser` CLI; **bring-your-own-key** model setup with separate worker and vision models; **Sentinel** to keep colonies moving while you're away; a new dashboard; and Hive's first published **memory benchmark**: on [LongMemEval](docs/memory-benchmark.md), V1 answers 88.4% on S (up from 77.0%) and 82.0% on M, and we also report that the same model given the whole LongMemEval-S history scores 96.8%.
+
+**Breaking:** V1 replaces v0.11's incubation phases, `run_parallel_workers` and `progress.db`, retires the bundled MCP server subprocesses (including `gcu-tools` and its `browser_*` tools), stops loading the bundled third-party integrations, and requires ripgrep. Sessions and the `~/.hive` layout migrate automatically. See [docs/releases/v1.0.0.md](docs/releases/v1.0.0.md).
+
 ## v0.11.0 — Action Plans, Charts, and a Cleaner Queen
 
 **Highlights:** a persistent, file-backed **task plan** gives every Queen a structured plan that survives session reload; inline **charting** (ECharts/Mermaid via a new `chart_tools` MCP server); colony import/export; and a major consolidation of the Queen's tool surface (`file_ops`, `shell_tools`) and prompt. See [docs/releases/v0.11.0.md](docs/releases/v0.11.0.md).
 
 ## v0.10.0 — The Colony
 
-**Breaking, ground-up architectural rewrite.** Old agents are not compatible. Hive moved from a compiled graph/DAG of nodes to **colonies of agents**: a persistent **Queen** (one of 13 domain personas, picked by a CEO-style router) leads a **colony** of **worker clones**. There are no graphs, edges, nodes, or data buffers — the Queen fans out workers with `run_worker` and coordinates them through a shared SQLite **tracker**. The framework, agent loop, runtime, and worker layers were rewritten from the ground up. See [docs/releases/v0.10.0.md](docs/releases/v0.10.0.md) (and v0.10.1–v0.10.5 for follow-ups).
-
-> The architecture has continued to evolve past v0.11.0 (a large runtime sync brought in the tracker-based coordination, the reminder/nudge hub, the incubating phase, and Sentinel escalation). The [Architecture Overview](docs/architecture/README.md) is the current source of truth.
+**Breaking, ground-up architectural rewrite.** Old agents are not compatible. Hive moved from a compiled graph/DAG of nodes to **colonies of agents**: a persistent **Queen** (one of eight personas, picked by an LLM router) leads a **colony** of workers. There are no graphs, edges, nodes, or data buffers. The framework, agent loop, runtime, and worker layers were rewritten from the ground up. See [docs/releases/v0.10.0.md](docs/releases/v0.10.0.md) (and v0.10.1–v0.10.5 for follow-ups).
 
 ---
 

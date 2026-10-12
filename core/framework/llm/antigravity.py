@@ -592,24 +592,18 @@ class AntigravityProvider(LLMProvider):
         if system:
             inner["systemInstruction"] = {"parts": [{"text": system}]}
         if tools:
-            inner["tools"] = [
-                {
-                    "functionDeclarations": [
-                        {
-                            "name": _clean_tool_name(t.name),
-                            "description": t.description,
-                            "parameters": _sanitize_schema_for_gemini(
-                                t.parameters
-                                or {
-                                    "type": "object",
-                                    "properties": {},
-                                }
-                            ),
-                        }
-                        for t in tools
-                    ]
-                }
-            ]
+            declarations = []
+            for t in tools:
+                try:
+                    parameters = _sanitize_schema_for_gemini(t.parameters or {"type": "object", "properties": {}})
+                except ValueError as exc:
+                    # One tool Gemini can't express (e.g. a multi-type union
+                    # from an MCP server) must not fail the whole request.
+                    logger.warning("antigravity: leaving out tool '%s' with a schema Gemini can't express: %s", t.name, exc)
+                    continue
+                declarations.append({"name": _clean_tool_name(t.name), "description": t.description, "parameters": parameters})
+            if declarations:
+                inner["tools"] = [{"functionDeclarations": declarations}]
         return {
             "project": self._project_id,
             "model": self.model,

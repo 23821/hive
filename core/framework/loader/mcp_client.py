@@ -459,9 +459,7 @@ class MCPClient:
                 # A server that never finishes the MCP handshake must fail
                 # here, not be published as a connection whose every call hangs.
                 self._teardown_conn(conn)
-                raise RuntimeError(
-                    f"Timed out waiting for MCP stdio connection to initialize (command={self.config.command}, args={self.config.args})"
-                )
+                raise RuntimeError(f"Timed out waiting for MCP stdio connection to initialize (server {self.config.name!r})")
 
             # Publish only a fully-initialized connection.
             self._conn = conn
@@ -583,7 +581,7 @@ class MCPClient:
                 raise connection_error[0]
             if not connection_ready.is_set():
                 self._teardown_conn(conn)
-                raise RuntimeError(f"Timed out waiting for MCP SSE connection to initialize (url={self.config.url})")
+                raise RuntimeError(f"Timed out waiting for MCP SSE connection to initialize (server {self.config.name!r})")
 
             self._conn = conn
             logger.info(f"Connected to MCP server '{self.config.name}' via SSE")

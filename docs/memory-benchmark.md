@@ -4,6 +4,8 @@ How well does a Hive Queen remember what you told her in earlier conversations? 
 
 It comes in two sizes. **LongMemEval-S** gives each question about 48 past sessions, roughly 115k tokens, which fits in a large model's context window. **LongMemEval-M** gives each question about 476 sessions, roughly 1.1M tokens, which doesn't. M is the case a memory system exists for.
 
+(These sizes are measured on the 2025 cleaned release we run, with the o200k tokenizer: M histories came to 1.07–1.15M tokens across a sample of 12 questions. The LongMemEval paper describes M as about 500 sessions and 1.5M tokens.)
+
 This page reports the results for Hive V1, how we got them, and what they don't show.
 
 ## Results at a glance

@@ -341,13 +341,15 @@ def test_connect_stdio_fails_when_the_server_never_initializes(monkeypatch):
             name="silent-server",
             transport="stdio",
             command=sys.executable,
-            args=["-c", "import time; time.sleep(30)"],
+            # A credential in the arguments must not leak into the error.
+            args=["-c", "import time; time.sleep(30)", "--api-key=s3cret"],
         )
     )
 
     started = time.monotonic()
-    with pytest.raises(RuntimeError, match="Timed out waiting for MCP stdio connection"):
+    with pytest.raises(RuntimeError, match="Timed out waiting for MCP stdio connection") as excinfo:
         client.connect()
 
     assert time.monotonic() - started < 15
     assert client._conn is None
+    assert "s3cret" not in str(excinfo.value)

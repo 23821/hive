@@ -71,3 +71,23 @@ def test_multi_type_non_null_union_raises():
 
     with pytest.raises(ValueError, match="Unsupported Gemini schema union"):
         _sanitize_schema_for_gemini({"type": ["string", "integer"]})
+
+
+def test_build_body_leaves_out_only_the_tool_gemini_cannot_express():
+    """One MCP tool with a multi-type union must not fail the whole request."""
+    from framework.llm.antigravity import AntigravityProvider
+    from framework.llm.provider import Tool
+
+    provider = AntigravityProvider.__new__(AntigravityProvider)
+    provider._project_id = "proj"
+    provider.model = "gemini-3-pro"
+    provider._thought_sigs = {}
+    tools = [
+        Tool(name="ok_tool", description="fine", parameters={"type": "object", "properties": {"q": {"type": ["string", "null"]}}}),
+        Tool(name="bad_tool", description="union", parameters={"type": "object", "properties": {"v": {"type": ["string", "integer"]}}}),
+    ]
+
+    body = provider._build_body([{"role": "user", "content": "hi"}], "", tools, 100)
+
+    names = [d["name"] for d in body["request"]["tools"][0]["functionDeclarations"]]
+    assert names == ["ok_tool"]

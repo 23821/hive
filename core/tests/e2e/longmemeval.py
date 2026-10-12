@@ -1,7 +1,7 @@
 """LongMemEval (S or M), run through the whole system.
 
-Each question's chat history (S: ~48 sessions, ~115k tokens; M: ~500
-sessions, ~1.5M tokens) is written to an
+Each question's chat history (S: ~48 sessions, ~115k tokens; M: ~476
+sessions, ~1.1M tokens in the cleaned release) is written to an
 isolated ``HIVE_HOME`` as finished queen sessions, dated with the
 benchmark's session dates. A real queen is then booted with its clock
 frozen at the question's date and asked the question, as a user would ask
@@ -63,7 +63,8 @@ import httpx
 from tests.e2e import synthetic
 
 # "s": ~115k tokens of history per question, fits a large context window.
-# "m": ~1.5M tokens per question (~500 sessions), fits none: the condition
+# "m": ~1.1M tokens per question (~476 sessions, measured; the paper
+# describes ~1.5M and ~500), fits none: the condition
 # a memory system exists for.
 VARIANT = os.environ.get("HIVE_LME_DATASET", "s").strip().lower()
 if VARIANT not in ("s", "m"):
@@ -285,12 +286,42 @@ def warm_index(queen_id: str = QUEEN_ID) -> None:
     sync_scope("queens", queen_id)
 
 
+def read_results(path: Path) -> list[dict[str, Any]]:
+    """Rows of a results file, repairing a tail left by an interrupted write.
+
+    A run killed mid-append can leave a truncated last line. Skipping it is
+    not enough: the next append would continue that line and corrupt the new
+    row too. So the file is cut back to the end of the last complete row.
+    """
+    if not path.is_file():
+        return []
+    data = path.read_bytes()
+    rows: list[dict[str, Any]] = []
+    good_end = 0
+    pos = 0
+    for raw in data.splitlines(keepends=True):
+        pos += len(raw)
+        line = raw.strip()
+        if not line:
+            good_end = pos
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            break
+        if not raw.endswith(b"\n"):
+            break  # parses, but the write may have stopped mid-line
+        rows.append(row)
+        good_end = pos
+    if good_end < len(data):
+        with path.open("r+b") as fh:
+            fh.truncate(good_end)
+    return rows
+
+
 def done_ids() -> set[str]:
     """Question ids already recorded in this run, for HIVE_LME_RESUME."""
-    path = run_dir() / "results.jsonl"
-    if not path.is_file():
-        return set()
-    return {json.loads(line)["question_id"] for line in path.read_text(encoding="utf-8").splitlines() if line.strip()}
+    return {r["question_id"] for r in read_results(run_dir() / "results.jsonl")}
 
 
 def freeze_clock(monkeypatch: Any, when: datetime) -> None:
@@ -555,7 +586,7 @@ def summarize(path: Path, *, title: str = f"{LABEL} through Hive") -> str:
     official script and most products report it; "task-averaged" is the
     unweighted mean of the six type scores, which some (Mastra) report.
     """
-    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = read_results(path)
     if not rows:
         return ""
 
@@ -623,8 +654,13 @@ async def _gather_limited(coros: list[Any], limit: int) -> list[Any]:
 
 
 async def rejudge(run: Path, *, api_base: str, api_key: str, model: str, max_tokens: int | None, concurrency: int) -> Path:
-    """Re-grade every saved answer in *run* with another judge. Returns the new results file."""
-    rows = [json.loads(line) for line in (run / "results.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    """Re-grade every saved answer in *run* with another judge. Returns the new results file.
+
+    A judge call that still fails after retries keeps its row, marked with
+    ``judge_error`` and counted wrong, so the other grades aren't lost and a
+    second ``rejudge`` can finish the job.
+    """
+    rows = read_results(run / "results.jsonl")
     safe_model = re.sub(r"[^\w.-]", "_", model)
     out = run / f"rejudged-{safe_model}"
     out.mkdir(exist_ok=True)
@@ -634,7 +670,10 @@ async def rejudge(run: Path, *, api_base: str, api_key: str, model: str, max_tok
             return {**row, "judge_model": model}  # no answer to grade; stays wrong
         row = {k: v for k, v in row.items() if k != "judge_error"}  # graded now
         item = load_question(row["question_id"])
-        verdict = await judge(item, row["hypothesis"], api_base=api_base, api_key=api_key, model=model, max_tokens=max_tokens)
+        try:
+            verdict = await judge(item, row["hypothesis"], api_base=api_base, api_key=api_key, model=model, max_tokens=max_tokens)
+        except Exception as exc:
+            return {**row, "correct": False, "judge": "", "judge_model": model, "judge_error": f"{type(exc).__name__}: {exc}"[:500]}
         return {**row, "correct": verdict.correct, "judge": verdict.raw, "judge_model": model, "original_judge": row.get("judge_model")}
 
     graded = await _gather_limited([one(r) for r in rows], concurrency)
@@ -661,20 +700,24 @@ async def reference_run(
     judge_base, judge_key, judge_model, judge_max = judge_with
     out.mkdir(parents=True, exist_ok=True)
     path = out / "results.jsonl"
-    done = {json.loads(line)["question_id"] for line in path.read_text(encoding="utf-8").splitlines() if line.strip()} if path.exists() else set()
+    done = {r["question_id"] for r in read_results(path)}
 
     async def one(qid: str) -> None:
         item = load_question(qid)
         body = {"model": reader_model, "messages": [{"role": "user", "content": reader_prompt(item, oracle=oracle)}], "temperature": 0}
+        error = judge_error = None
+        verdict = Verdict(correct=False, raw="", judge_model=judge_model)
         try:
             hypothesis = await _chat(reader_base, reader_key, body)
-            verdict = await judge(item, hypothesis, api_base=judge_base, api_key=judge_key, model=judge_model, max_tokens=judge_max)
         except Exception as exc:  # e.g. a whole-history prompt over the context window
-            # Counted wrong, like an unanswered question in a Hive run.
-            hypothesis, verdict = "", Verdict(correct=False, raw="", judge_model=judge_model)
-            error = f"{type(exc).__name__}: {exc}"[:500]
+            # No answer: counted wrong, like an unanswered question in a Hive run.
+            hypothesis, error = "", f"{type(exc).__name__}: {exc}"[:500]
         else:
-            error = None
+            try:
+                verdict = await judge(item, hypothesis, api_base=judge_base, api_key=judge_key, model=judge_model, max_tokens=judge_max)
+            except Exception as exc:
+                # The answer exists: keep it for `rejudge`, counted wrong until then.
+                judge_error = f"{type(exc).__name__}: {exc}"[:500]
         row = {
             "question_id": qid,
             "question_type": item["question_type"],
@@ -690,6 +733,8 @@ async def reference_run(
         }
         if error:
             row["error"] = error
+        if judge_error:
+            row["judge_error"] = judge_error
         with path.open("a", encoding="utf-8") as fh:  # single-threaded event loop: no interleaving
             fh.write(json.dumps(row, default=str) + "\n")
 

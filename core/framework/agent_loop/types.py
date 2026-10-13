@@ -131,7 +131,7 @@ class AgentContext:
     - Execution metadata
     """
 
-    runtime: DecisionTracker
+    runtime: DecisionTracker | None  # None when nothing records decisions; the agent loop never reads it
 
     agent_id: str
     agent_spec: AgentSpec
@@ -355,6 +355,18 @@ class AgentResult:
                 value_str += "..."
             parts.append(f"  - {key}: {value_str}")
         return "\n".join(parts)
+
+
+@dataclass(frozen=True)
+class AgentReport:
+    """What an agent handed back when it called ``report_to_parent``.
+
+    ``data`` follows the spec's ``report_schema`` when it has one.
+    """
+
+    status: str  # success | partial | failed
+    summary: str
+    data: dict[str, Any] = field(default_factory=dict)
 
 
 class AgentProtocol(ABC):

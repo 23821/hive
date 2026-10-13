@@ -6,8 +6,8 @@
     result = await loop.execute(AgentContext(runtime=None, agent_id="a1", agent_spec=spec, llm=llm))
 
 Each name is imported when first used, so ``import hive`` is cheap and a project pays only for
-the parts it touches. ``SSEResponse`` needs the ``server`` extra (aiohttp); colonies and Hive's own
-tools need the ``tools`` extra. Everything else in Hive stays importable under ``framework``.
+the parts it touches. ``SSEResponse`` needs the ``server`` extra (aiohttp), so ``from hive import *``
+leaves it out; colonies and Hive's own tools need the ``tools`` extra. Everything else in Hive stays importable under ``framework``.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
         ToolResultEvent,
     )
     from framework.loader.agent_loader import AgentLoader
-    from framework.server.sse import SSEResponse
+    from framework.server.sse import SSEResponse as SSEResponse  # not in __all__: it needs the server extra
     from framework.storage.conversation_store import FileConversationStore
     from framework.tracker.decision_tracker import DecisionTracker
 
@@ -141,7 +141,6 @@ __all__ = [
     "ReasoningDeltaEvent",
     "ReasoningStartEvent",
     "RuntimeConfig",
-    "SSEResponse",
     "StreamErrorEvent",
     "StreamEvent",
     "TextDeltaEvent",
@@ -169,4 +168,4 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> list[str]:
-    return sorted({*globals(), *__all__})
+    return sorted({*globals(), *__all__, *_EXPORTS})

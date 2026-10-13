@@ -2716,7 +2716,13 @@ class AgentLoop(AgentProtocol):
             #       ESCALATION_REQUESTED and pause for queen guidance.
             #       Kept so existing run_agent_with_input flows that
             #       depend on credential/ambiguity handoffs don't break.
-            _is_worker = stream_id not in ("queen", "judge") and not False and not ctx.supports_direct_user_io and self._event_bus is not None
+            # A loop given ``on_report`` is held to reporting with or without an
+            # event bus; legacy escalation (path b) still needs the bus.
+            _is_worker = (
+                stream_id not in ("queen", "judge")
+                and not ctx.supports_direct_user_io
+                and (self._event_bus is not None or self._on_report is not None)
+            )
             _is_parallel_worker = self._reports_to_parent(stream_id)
             _worker_no_tool_turn = not real_tool_results and not outputs_set and not queen_input_requested and not user_input_requested
             if _is_worker and _worker_no_tool_turn:
@@ -3469,7 +3475,18 @@ class AgentLoop(AgentProtocol):
                     await conversation.add_user_message(f"[Judge feedback]: {fb}")
                 continue
 
-        # 7. Max iterations exhausted
+        # 7. Max iterations exhausted. A report made on the last iteration still
+        # ends the run cleanly: 6a-pre would have exited with it next time round.
+        if self._report_terminated:
+            logger.info("[%s] terminated via report_to_parent on the last iteration", node_id)
+            await self._publish_loop_completed(stream_id, node_id, self._config.max_iterations, execution_id)
+            return AgentResult(
+                success=True,
+                output=accumulator.to_dict(),
+                tokens_used=total_input_tokens + total_output_tokens,
+                latency_ms=int((time.time() - start_time) * 1000),
+                conversation=None,
+            )
         await self._publish_loop_completed(stream_id, node_id, self._config.max_iterations, execution_id)
         latency_ms = int((time.time() - start_time) * 1000)
         if ctx.runtime_logger:
@@ -5379,6 +5396,15 @@ class AgentLoop(AgentProtocol):
                             is_error=True,
                         )
                         results_by_id[tc.tool_use_id] = result
+                        continue
+                    if self._report_terminated:
+                        # One terminal report per run: a second call in the
+                        # same batch is refused, not delivered twice.
+                        results_by_id[tc.tool_use_id] = ToolResult(
+                            tool_use_id=tc.tool_use_id,
+                            content="ERROR: you have already reported; this run is over.",
+                            is_error=True,
+                        )
                         continue
 
                     report_tc_input = dict(tc.tool_input)

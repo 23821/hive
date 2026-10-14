@@ -2,6 +2,10 @@
 
 > Full, detailed release notes live in [`docs/releases/`](docs/releases/). The entries below summarize the architecturally significant releases; older entries follow.
 
+## v1.0.3 — The Right Version
+
+**Fixed:** the dashboard showed `v0.1.0` whatever Hive was installed; it now shows Hive's version, from `core/pyproject.toml`. **New:** `hive --version`. See [docs/releases/v1.0.3.md](docs/releases/v1.0.3.md).
+
 ## v1.0.2 — The Whole App from PyPI
 
 **Highlights:** `pip install "aden-hive[tools]"` installs all of Hive: `aden-tools` now ships the terminal, memory and chart tools that only worked from a checkout, and `aden-hive` ships the dashboard. Run `hive open`. Projects built on Hive get a starter [AGENTS.md](templates/derivative/AGENTS.md) for their coding agents. See [docs/releases/v1.0.2.md](docs/releases/v1.0.2.md).

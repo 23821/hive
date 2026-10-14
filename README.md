@@ -70,7 +70,7 @@ cd hive
 The quickstart creates a single Python environment for the workspace, stores your API key encrypted under `~/.hive`, asks which model to use, builds the dashboard and opens it at `http://127.0.0.1:8787`. Next time, run `hive open` from the repository.
 
 > [!NOTE]
-> Hive is a `uv` workspace, not a pip package. `pip install -e .` installs a placeholder that won't run; use the quickstart. To build your own project on Hive's agent loop and models, depend on the `aden-hive` package instead: see [Building on Hive](docs/building-on-hive.md).
+> This repository is a `uv` workspace: `pip install -e .` at its root installs a placeholder that won't run, so use the quickstart. Without the repository, `pip install "aden-hive[tools]"` installs Hive from PyPI; then run `hive open`. To build your own project on Hive's agent loop and models, depend on `aden-hive`: see [Building on Hive](docs/building-on-hive.md).
 
 **Then** type a task on the home screen and choose the queen to give it to, or open the **Prompt Library** and send a ready-made prompt straight to the queen it was written for.
 

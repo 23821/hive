@@ -5,21 +5,12 @@ used by your own project. Depend on the `aden-hive` package and import them from
 
 ## Install
 
-Hive isn't on PyPI yet, so depend on a tagged commit. With uv:
+Hive is on PyPI as `aden-hive`:
 
 ```toml
 # pyproject.toml
 [project]
 dependencies = ["aden-hive[server]>=1.0.1,<2"]
-
-[tool.uv.sources]
-aden-hive = { git = "https://github.com/aden-hive/hive", tag = "v1.0.1", subdirectory = "core" }
-```
-
-With pip, use the equivalent direct reference:
-
-```text
-aden-hive[server] @ git+https://github.com/aden-hive/hive@v1.0.1#subdirectory=core
 ```
 
 The base install brings only what the primitives need. The extras are:
@@ -27,7 +18,17 @@ The base install brings only what the primitives need. The extras are:
 | Extra | Adds | Needed for |
 |---|---|---|
 | `server` | aiohttp | `SSEResponse`, and serving your own pages |
-| `tools` | `aden-tools`: Hive's built-in tools, with a browser, PDF and OCR libraries, and database and SaaS clients | colonies and their workers, credential tooling |
+| `tools` | `aden-tools`: Hive's built-in tools (terminal, files, memory, charts, PDFs, scraping, spreadsheets) and the browser, with their libraries | queens, colonies and their workers; the whole Hive app |
+
+`pip install "aden-hive[tools]"` installs the whole Hive app, dashboard included: run `hive open`.
+The terminal tools also need [ripgrep](https://github.com/BurntSushi/ripgrep) on your `PATH`.
+
+## Start a project
+
+Copy [`templates/derivative/AGENTS.md`](../templates/derivative/AGENTS.md) to your repository's root
+and fill in its overview and commands. It is an [AGENTS.md](https://agents.md) that tells coding
+agents how to build on Hive: the rules below, a working example, how to test without a model, and
+the gotchas.
 
 ## Use
 

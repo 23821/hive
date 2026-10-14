@@ -1,6 +1,6 @@
 [project]
 name = "aden-hive"
-version = "1.0.1"
+version = "1.0.2"
 description = "Hive: a goal-driven agent runtime. Build on its primitives with `from hive import ...`."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,7 +22,8 @@ dependencies = [
 [project.optional-dependencies]
 webhook = ["aiohttp>=3.9.0"]
 server = ["aiohttp>=3.9.0"]
-tools = ["aden-tools"]
+# Hive the application: its built-in tools and the browser. `pip install "aden-hive[tools]"`, then `hive open`.
+tools = ["aden-tools==1.0.2"]
 testing = [
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
@@ -45,6 +46,15 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 # `hive` is the public surface for projects built on Hive; `framework` is Hive itself.
 packages = ["framework", "hive"]
+
+# The built dashboard (frontend/dist) goes into the wheel as framework/server/frontend: see hatch_build.py.
+[tool.hatch.build.targets.wheel.hooks.custom]
+
+[tool.hatch.build.targets.sdist]
+# dist/ is git-ignored; the sdist carries the built dashboard so a wheel built from it has one.
+artifacts = ["frontend/dist/"]
+# Hatch reads core/.gitignore, not the repository's, so node_modules must be left out by name.
+exclude = ["frontend/node_modules"]
 
 [tool.ruff]
 target-version = "py311"

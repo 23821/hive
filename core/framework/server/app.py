@@ -1142,22 +1142,28 @@ def create_app(model: str | None = None) -> web.Application:
     return app
 
 
-def _setup_static_serving(app: web.Application) -> None:
-    """Serve frontend static files if the dist directory exists."""
-    # Try: CWD/frontend/dist, core/frontend/dist, repo_root/frontend/dist
+def frontend_dist_dir() -> Path | None:
+    """The built dashboard, if there is one.
+
+    A checkout serves ``core/frontend/dist`` (built by the quickstart); an installed
+    package serves the copy its wheel ships in ``framework/server/frontend``.
+    """
     _here = Path(__file__).resolve().parent  # core/framework/server/
     candidates = [
         Path("frontend/dist"),
         _here.parent.parent / "frontend" / "dist",  # core/frontend/dist
         _here.parent.parent.parent / "frontend" / "dist",  # repo_root/frontend/dist
+        _here / "frontend",  # the wheel's copy
     ]
-
-    dist_dir: Path | None = None
     for candidate in candidates:
         if candidate.is_dir() and (candidate / "index.html").exists():
-            dist_dir = candidate.resolve()
-            break
+            return candidate.resolve()
+    return None
 
+
+def _setup_static_serving(app: web.Application) -> None:
+    """Serve frontend static files if the dist directory exists."""
+    dist_dir = frontend_dist_dir()
     if dist_dir is None:
         logger.debug("No frontend/dist found — skipping static file serving")
         return

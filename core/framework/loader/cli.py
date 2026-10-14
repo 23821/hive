@@ -879,8 +879,10 @@ def _http_delete(url: str, timeout: float = 10.0) -> dict:
 
 
 def _frontend_dist_exists() -> bool:
-    candidates = [Path("frontend/dist"), Path("core/frontend/dist")]
-    return any((c / "index.html").exists() for c in candidates if c.is_dir())
+    # The same lookup the server serves from, so an installed package's dashboard counts too.
+    from framework.server.app import frontend_dist_dir
+
+    return frontend_dist_dir() is not None
 
 
 def _find_chrome_bin() -> str | None:

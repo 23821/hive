@@ -102,7 +102,7 @@ from framework.agent_loop.reminders import (
     ReminderPoint,
     wrap_reminder,
 )
-from framework.agent_loop.types import AgentContext, AgentProtocol, AgentResult
+from framework.agent_loop.types import AgentContext, AgentProtocol, AgentReport, AgentResult
 from framework.config import get_vision_fallback_model
 from framework.host.event_bus import EventBus
 from framework.llm.capabilities import filter_tools_for_model, supports_image_tool_results
@@ -744,12 +744,22 @@ class AgentLoop(AgentProtocol):
         config: LoopConfig | None = None,
         tool_executor: Callable[[ToolUse], ToolResult | Awaitable[ToolResult]] | None = None,
         conversation_store: ConversationStore | None = None,
+        *,
+        on_report: Callable[[AgentReport], None] | None = None,
     ) -> None:
+        """Set up a loop; ``execute(ctx)`` runs it.
+
+        Args:
+            on_report: Called with the agent's ``AgentReport`` when it calls ``report_to_parent``.
+                Passing it gives the agent that tool, whatever its stream, and the loop ends once
+                the agent reports. Colony workers get the tool through their ``worker:`` stream.
+        """
         self._event_bus = event_bus
         self._judge = judge
         self._config = config or LoopConfig()
         self._tool_executor = tool_executor
         self._conversation_store = conversation_store
+        self._on_report = on_report
         # Tuple: (content, is_client_input, image_content, correlation_id).
         # correlation_id ties a queued message back to the CLIENT_INPUT_RECEIVED
         # event emitted at receive time, so the drain can emit a matching
@@ -1576,10 +1586,11 @@ class AgentLoop(AgentProtocol):
         # (stream_id="worker", no colon — run_agent_with_input style),
         # which still uses it for credential / ambiguity handoffs back
         # to the queen.
-        is_parallel_worker = isinstance(stream_id, str) and stream_id.startswith("worker:")
+        is_parallel_worker = self._reports_to_parent(stream_id)
         if stream_id not in ("queen", "judge", "overseer") and not is_parallel_worker:
             tools.append(self._build_escalate_tool())
-        # Only parallel workers (stream_id="worker:{uuid}") get report_to_parent.
+        # Only parallel workers (stream_id="worker:{uuid}") and loops given
+        # ``on_report`` get report_to_parent.
         # report_schema is optional and not present on every spec type
         # (NodeSpec etc.), so read it defensively — absent means no schema.
         if is_parallel_worker:
@@ -2705,8 +2716,14 @@ class AgentLoop(AgentProtocol):
             #       ESCALATION_REQUESTED and pause for queen guidance.
             #       Kept so existing run_agent_with_input flows that
             #       depend on credential/ambiguity handoffs don't break.
-            _is_worker = stream_id not in ("queen", "judge") and not False and not ctx.supports_direct_user_io and self._event_bus is not None
-            _is_parallel_worker = isinstance(stream_id, str) and stream_id.startswith("worker:")
+            # A loop given ``on_report`` is held to reporting with or without an
+            # event bus; legacy escalation (path b) still needs the bus.
+            _is_worker = (
+                stream_id not in ("queen", "judge")
+                and not ctx.supports_direct_user_io
+                and (self._event_bus is not None or self._on_report is not None)
+            )
+            _is_parallel_worker = self._reports_to_parent(stream_id)
             _worker_no_tool_turn = not real_tool_results and not outputs_set and not queen_input_requested and not user_input_requested
             if _is_worker and _worker_no_tool_turn:
                 _worker_text_only_streak += 1
@@ -2783,13 +2800,11 @@ class AgentLoop(AgentProtocol):
                     }
                     handle_report_to_parent(_synthetic_input)
                     _normalised = _synthetic_input.get("_normalised", {})
-                    _owner = getattr(self, "_owner_worker", None)
-                    if _owner is not None:
-                        _owner.record_explicit_report(
-                            status=_normalised.get("status", "failed"),
-                            summary=_normalised.get("summary", _summary),
-                            data=_normalised.get("data", {}),
-                        )
+                    self._record_report(
+                        status=_normalised.get("status", "failed"),
+                        summary=_normalised.get("summary", _summary),
+                        data=_normalised.get("data", {}),
+                    )
                     self._report_terminated = True
                     if ctx.runtime_logger:
                         iter_latency_ms = int((time.time() - iter_start) * 1000)
@@ -3460,7 +3475,18 @@ class AgentLoop(AgentProtocol):
                     await conversation.add_user_message(f"[Judge feedback]: {fb}")
                 continue
 
-        # 7. Max iterations exhausted
+        # 7. Max iterations exhausted. A report made on the last iteration still
+        # ends the run cleanly: 6a-pre would have exited with it next time round.
+        if self._report_terminated:
+            logger.info("[%s] terminated via report_to_parent on the last iteration", node_id)
+            await self._publish_loop_completed(stream_id, node_id, self._config.max_iterations, execution_id)
+            return AgentResult(
+                success=True,
+                output=accumulator.to_dict(),
+                tokens_used=total_input_tokens + total_output_tokens,
+                latency_ms=int((time.time() - start_time) * 1000),
+                conversation=None,
+            )
         await self._publish_loop_completed(stream_id, node_id, self._config.max_iterations, execution_id)
         latency_ms = int((time.time() - start_time) * 1000)
         if ctx.runtime_logger:
@@ -5357,8 +5383,9 @@ class AgentLoop(AgentProtocol):
                     # SUBAGENT_REPORT and terminate cleanly. The worker
                     # owner (Worker instance) records the explicit report
                     # via ``record_explicit_report`` so Worker.run()'s
-                    # terminal event emission picks it up.
-                    if not (isinstance(stream_id, str) and stream_id.startswith("worker:")):
+                    # terminal event emission picks it up; a loop given
+                    # ``on_report`` hands it to that callback.
+                    if not self._reports_to_parent(stream_id):
                         result = ToolResult(
                             tool_use_id=tc.tool_use_id,
                             content=(
@@ -5370,22 +5397,27 @@ class AgentLoop(AgentProtocol):
                         )
                         results_by_id[tc.tool_use_id] = result
                         continue
+                    if self._report_terminated:
+                        # One terminal report per run: a second call in the
+                        # same batch is refused, not delivered twice.
+                        results_by_id[tc.tool_use_id] = ToolResult(
+                            tool_use_id=tc.tool_use_id,
+                            content="ERROR: you have already reported; this run is over.",
+                            is_error=True,
+                        )
+                        continue
 
                     report_tc_input = dict(tc.tool_input)
                     report_tc_input["tool_use_id"] = tc.tool_use_id
                     result = handle_report_to_parent(report_tc_input)
                     results_by_id[tc.tool_use_id] = result
 
-                    # Record on the owning Worker so its terminal event
-                    # emission picks up the explicit report.
-                    owner_worker = getattr(self, "_owner_worker", None)
-                    if owner_worker is not None:
-                        normalised = report_tc_input.get("_normalised", {})
-                        owner_worker.record_explicit_report(
-                            status=normalised.get("status", "success"),
-                            summary=normalised.get("summary", ""),
-                            data=normalised.get("data", {}),
-                        )
+                    normalised = report_tc_input.get("_normalised", {})
+                    self._record_report(
+                        status=normalised.get("status", "success"),
+                        summary=normalised.get("summary", ""),
+                        data=normalised.get("data", {}),
+                    )
 
                     # Terminate the loop cleanly after this turn. Set the
                     # same completion flag path that set_output used so
@@ -6101,6 +6133,17 @@ class AgentLoop(AgentProtocol):
     def _build_escalate_tool(self) -> Tool:
         """Build the synthetic escalate tool. Delegates to synthetic_tools module."""
         return build_escalate_tool()
+
+    def _reports_to_parent(self, stream_id: Any) -> bool:
+        """Whether this agent ends by calling report_to_parent: a colony worker, or a loop given ``on_report``."""
+        return self._on_report is not None or (isinstance(stream_id, str) and stream_id.startswith("worker:"))
+
+    def _record_report(self, *, status: str, summary: str, data: dict[str, Any]) -> None:
+        """Hand a report to whoever receives it: the owning Worker, and ``on_report``."""
+        if self._owner_worker is not None:
+            self._owner_worker.record_explicit_report(status=status, summary=summary, data=data)
+        if self._on_report is not None:
+            self._on_report(AgentReport(status=status, summary=summary, data=data))
 
     # -------------------------------------------------------------------
     # Judge evaluation

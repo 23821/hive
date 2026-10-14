@@ -1,5 +1,5 @@
 [project]
-name = "tools"
+name = "aden-tools"
 version = "0.1.0"
 description = "Tools library for the Aden agent framework"
 readme = "README.md"
@@ -36,7 +36,7 @@ dependencies = [
     "resend>=2.0.0",
     "asana>=3.2.0",
     "google-analytics-data>=0.18.0",
-    "framework",
+    "aden-hive",
     "stripe>=14.3.0",
     "arxiv>=2.1.0",
     "requests>=2.31.0",
@@ -92,7 +92,7 @@ all = [
 hive-browser = "gcu.cli:main"
 
 [tool.uv.sources]
-framework = { workspace = true }
+aden-hive = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

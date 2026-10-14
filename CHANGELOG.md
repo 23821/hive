@@ -2,6 +2,12 @@
 
 > Full, detailed release notes live in [`docs/releases/`](docs/releases/). The entries below summarize the architecturally significant releases; older entries follow.
 
+## v1.0.1 — Build on Hive
+
+**Highlights:** projects can build on Hive's primitives: depend on `aden-hive` and `from hive import AgentLoop, LiteLLMProvider, EventBus, ...`, with each name imported when first used. `AgentLoop(on_report=...)` lets any agent hand back a structured report. Hive's built-in tools moved to the `tools` extra, so a dependent project installs 83 packages instead of 123.
+
+**Changed:** the packages are renamed `aden-hive` (was `framework`) and `aden-tools` (was `tools`); import names are unchanged. See [docs/releases/v1.0.1.md](docs/releases/v1.0.1.md).
+
 ## v1.0.0 — Colonies, Built-in Tools, and Measured Memory (unreleased)
 
 **Highlights:** colonies rebuilt around execute-first: a queen does the work herself, then forks a **colony** that coordinates through a shared SQLite **tracker**, spawns worker clones with `run_worker`, and runs at scale with resumable **playbooks** and colony **skills**; **thirteen queens** (five new), and you choose who takes a job; Hive's own tools now **run in-process**, with no tool servers, plus your own Chrome through the `hive-browser` CLI; **bring-your-own-key** model setup with separate worker and vision models; **Sentinel** to keep colonies moving while you're away; a new dashboard; and Hive's first published **memory benchmark**: on [LongMemEval](docs/memory-benchmark.md), V1 answers 88.4% on S (up from 77.0%) and 82.0% on M, and we also report that the same model given the whole LongMemEval-S history scores 96.8%.

@@ -1181,6 +1181,37 @@ class TestThinkingBlockStreaming:
         finish = next(e for e in events if isinstance(e, FinishEvent))
         assert finish.thinking_blocks == []
 
+    @pytest.mark.asyncio
+    @patch("litellm.acompletion")
+    async def test_reasoning_content_lands_on_finish_event(self, mock_acompletion):
+        """Qwen/DeepSeek/GLM stream reasoning as a plain ``reasoning_content``
+        string. It is shown live and must also reach FinishEvent, so the
+        agent loop can send it back on the turn's next step."""
+        from framework.llm.stream_events import FinishEvent, ReasoningDeltaEvent
+
+        def chunk(*, reasoning=None, content=None, finish_reason=None, usage=None):
+            delta = SimpleNamespace(content=content, tool_calls=None, thinking_blocks=None, reasoning_content=reasoning)
+            return SimpleNamespace(choices=[SimpleNamespace(delta=delta, finish_reason=finish_reason)], usage=usage)
+
+        provider = LiteLLMProvider(model="openai/qwen3", api_key="test-key", api_base="http://localhost/v1")
+        chunks = [
+            chunk(reasoning="First the map, "),
+            chunk(reasoning="then the people."),
+            chunk(content="Done."),
+            chunk(finish_reason="stop", usage=SimpleNamespace(prompt_tokens=5, completion_tokens=7)),
+        ]
+
+        async def _side_effect(*args, **kwargs):
+            return self._fake_stream(chunks)
+
+        mock_acompletion.side_effect = _side_effect
+
+        events = [e async for e in provider.stream(messages=[{"role": "user", "content": "hi"}])]
+
+        assert "".join(e.content for e in events if isinstance(e, ReasoningDeltaEvent)) == "First the map, then the people."
+        finish = next(e for e in events if isinstance(e, FinishEvent))
+        assert finish.reasoning_content == "First the map, then the people." and finish.thinking_blocks == []
+
 
 # ---------------------------------------------------------------------------
 # AgentRunner._is_local_model — parameterized tests

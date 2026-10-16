@@ -4053,6 +4053,9 @@ class AgentLoop(AgentProtocol):
             # echoed back on every follow-up request (reasoning models 400
             # otherwise). See Message.thinking_blocks.
             _thinking_blocks: list[dict[str, Any]] = []
+            # The same for reasoning streamed as ``reasoning_content`` (Qwen,
+            # DeepSeek, GLM): sent back for the steps of the current turn.
+            _reasoning_content = ""
 
             # Gap 1 - Streaming tool execution. Any tool flagged as
             # concurrency_safe is kicked off the moment its ToolCallEvent
@@ -4135,7 +4138,7 @@ class AgentLoop(AgentProtocol):
                 _partial_dicts: list[dict[str, Any]] = _partial_tc_dicts,  # noqa: B006,B008
             ) -> None:
                 nonlocal accumulated_text, _stream_error, _stream_last_event_at
-                nonlocal _first_event_at, _thinking_blocks
+                nonlocal _first_event_at, _thinking_blocks, _reasoning_content
                 _clean_snapshot = ""  # visible-only text for the frontend
                 _reasoning_emitted = ""  # last reasoning emitted via CLIENT_REASONING (dedup)
                 _reasoning_native = ""  # accumulated native reasoning-delta text (thinking models)
@@ -4323,6 +4326,8 @@ class AgentLoop(AgentProtocol):
                         # being persisted, so overwrite rather than extend.
                         if event.thinking_blocks:
                             _thinking_blocks = list(event.thinking_blocks)
+                        if event.reasoning_content:
+                            _reasoning_content = event.reasoning_content
 
                         # Tell the conversation the size of THIS request's
                         # prompt. ``max_context_tokens`` is a single-prompt
@@ -4673,6 +4678,7 @@ class AgentLoop(AgentProtocol):
                     content=accumulated_text,
                     tool_calls=tc_dicts,
                     thinking_blocks=_thinking_blocks or None,
+                    reasoning_content=_reasoning_content or None,
                 )
 
             # Reminder bookkeeping: one inner turn = one model stream +

@@ -3070,6 +3070,9 @@ class LiteLLMProvider(LLMProvider):
             # block still being assembled from deltas.
             thinking_acc: list[dict[str, Any]] = []
             _thinking_current: dict[str, Any] | None = None
+            # Reasoning streamed as the OpenAI-compatible ``reasoning_content``
+            # string (Qwen, DeepSeek, GLM): unsigned, sent back as it came.
+            reasoning_acc = ""
             _saw_reasoning = False  # logged once when reasoning deltas first appear
             input_tokens = 0
             output_tokens = 0
@@ -3155,6 +3158,7 @@ class LiteLLMProvider(LLMProvider):
                         _rc = getattr(delta, "reasoning_content", None) if delta else None
                         if _rc:
                             _reason_chunk += _rc
+                            reasoning_acc += _rc
 
                     if _reason_chunk:
                         if not _saw_reasoning:
@@ -3301,6 +3305,7 @@ class LiteLLMProvider(LLMProvider):
                                 credits=credits,
                                 model=self.model,
                                 thinking_blocks=list(thinking_acc),
+                                reasoning_content=reasoning_acc,
                             )
                         )
 
@@ -3366,6 +3371,7 @@ class LiteLLMProvider(LLMProvider):
                                         credits=credits if credits is not None else _ev.credits,
                                         model=_ev.model,
                                         thinking_blocks=_ev.thinking_blocks,
+                                        reasoning_content=_ev.reasoning_content,
                                     )
                                     break
                     except Exception as _e:

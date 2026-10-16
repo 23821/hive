@@ -156,6 +156,16 @@ class TestMessage:
         # Omitted when absent.
         assert "thinking_blocks" not in Message(seq=8, role="assistant", content="x").to_storage_dict()
 
+    def test_reasoning_content_echoed_back_and_stored(self):
+        """Reasoning streamed as the OpenAI-compatible ``reasoning_content``
+        string (Qwen, DeepSeek, GLM) goes back as that string and survives a
+        reload, like signed thinking blocks do."""
+        m = Message(seq=0, role="assistant", content="", tool_calls=SAMPLE_TOOL_CALLS, reasoning_content="check SF first")
+        assert m.to_llm_dict()["reasoning_content"] == "check SF first"
+        assert Message.from_storage_dict(m.to_storage_dict()).reasoning_content == "check SF first"
+        plain = Message(seq=1, role="assistant", content="hi")
+        assert "reasoning_content" not in plain.to_llm_dict() and "reasoning_content" not in plain.to_storage_dict()
+
 
 # ===================================================================
 # NodeConversation (in-memory)
@@ -183,6 +193,22 @@ class TestNodeConversation:
         summary = conv.export_summary()
         assert "turns: 2" in summary
         assert "messages: 6" in summary
+
+    @pytest.mark.asyncio
+    async def test_reasoning_goes_back_only_within_the_turn(self):
+        """Qwen's template renders the reasoning of the steps since the last
+        user message; without it each earlier step of a tool loop reads as
+        unthought and the model loses its thread. Older turns' reasoning is
+        dropped by the template, so it is not sent."""
+        conv = NodeConversation()
+        await conv.add_user_message("weather?")
+        await conv.add_assistant_message("", tool_calls=SAMPLE_TOOL_CALLS, reasoning_content="look up SF")
+        await conv.add_tool_result("call_1", "sunny")
+        await conv.add_assistant_message("It's sunny!", reasoning_content="sunny means no coat")
+        llm = conv.to_llm_messages()
+        assert [m.get("reasoning_content") for m in llm if m["role"] == "assistant"] == ["look up SF", "sunny means no coat"]
+        await conv.add_user_message("and tomorrow?")
+        assert all("reasoning_content" not in m for m in conv.to_llm_messages())
 
     @pytest.mark.asyncio
     async def test_system_prompt_excluded_from_messages(self):

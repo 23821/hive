@@ -341,48 +341,11 @@ async def _validate_provider_key(
 
     Runs the check in a thread pool to avoid blocking the event loop.
     """
-    from scripts.check_llm_key import (
-        PROVIDERS as CHECK_PROVIDERS,
-        check_anthropic_compatible,
-        check_minimax,
-        check_openai_compatible,
-        check_openrouter,
-        check_openrouter_model,
-    )
+    from framework.llm.key_check import check_key
 
     def _check() -> dict:
-        pid = provider.lower()
         try:
-            # Subscription providers with custom api_base
-            if pid == "openrouter" and model:
-                return check_openrouter_model(api_key, model=model, api_base=api_base or "https://openrouter.ai/api/v1")
-            if api_base and pid == "minimax":
-                return check_minimax(api_key, api_base)
-            if api_base and pid == "openrouter":
-                return check_openrouter(api_key, api_base)
-            if api_base and pid == "kimi":
-                return check_anthropic_compatible(
-                    api_key,
-                    api_base.rstrip("/") + "/v1/messages",
-                    "Kimi",
-                    model=model or "kimi-k2.6",
-                )
-            if api_base and pid == "hive":
-                return check_anthropic_compatible(
-                    api_key,
-                    api_base.rstrip("/") + "/v1/messages",
-                    "Hive",
-                    model=model or "queen",
-                    bearer_auth=True,
-                )
-            if api_base:
-                endpoint = api_base.rstrip("/") + "/models"
-                name = {"zai": "ZAI"}.get(pid, "Custom provider")
-                return check_openai_compatible(api_key, endpoint, name)
-            if pid in CHECK_PROVIDERS:
-                return CHECK_PROVIDERS[pid](api_key)
-            # No check available — assume valid
-            return {"valid": True, "message": f"No health check for {pid}"}
+            return check_key(provider.lower(), api_key, api_base=api_base, model=model)
         except Exception as exc:
             return {"valid": None, "message": f"Validation error: {exc}"}
 

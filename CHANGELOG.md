@@ -2,6 +2,10 @@
 
 > Full, detailed release notes live in [`docs/releases/`](docs/releases/). The entries below summarize the architecturally significant releases; older entries follow.
 
+## v1.0.4 — Reasoning Remembered
+
+**Fixed:** Qwen, DeepSeek and GLM get their own `reasoning_content` back on the later steps of a turn, so a tool loop no longer loses its thread; saving a provider in an installed Hive no longer fails with `ModuleNotFoundError`. See [docs/releases/v1.0.4.md](docs/releases/v1.0.4.md).
+
 ## v1.0.3 — The Right Version
 
 **Fixed:** the dashboard showed `v0.1.0` whatever Hive was installed; it now shows Hive's version, from `core/pyproject.toml`. **New:** `hive --version`. See [docs/releases/v1.0.3.md](docs/releases/v1.0.3.md).

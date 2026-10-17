@@ -2081,6 +2081,8 @@ class SessionManager:
 
         return {
             "session_id": d.name,
+            "title": meta.get("title") or None,
+            "forked_from": (meta.get("forked_from") or {}).get("session_id"),
             "cold": True,  # caller overrides for live sessions
             "live": False,
             "has_messages": convs_dir.exists() and message_count > 0,

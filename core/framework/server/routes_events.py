@@ -86,6 +86,7 @@ DEFAULT_EVENT_TYPES = [
     # swap the ?session= param to the successor. Without it the UI is
     # stranded on the retired session until a manual reload.
     EventType.SESSION_FORKED,
+    EventType.SESSION_TITLE_UPDATED,
 ]
 
 # Keepalive interval in seconds

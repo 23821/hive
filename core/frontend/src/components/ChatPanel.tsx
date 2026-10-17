@@ -17,6 +17,7 @@ import {
   Copy,
   RotateCcw,
   Pencil,
+  GitBranch,
   ThumbsUp,
   ThumbsDown,
   ChevronLeft,
@@ -265,23 +266,43 @@ function FeedbackBtns({
 /** Queen-side action row: copy → thumbs → download → confirmation chip.
  *  Owns the feedback round-trip status so the confirmation can sit AFTER
  *  the download button (not wedged between thumbs-down and download). */
+/** The event timestamp of a user message the server logged (its bubble id is
+ *  ``user-input-<timestamp>``), or null for one still optimistic/queued. A
+ *  fork is anchored on this timestamp. */
+export function userInputTimestamp(msg: ChatMessage): string | null {
+  return msg.type === "user" && msg.id.startsWith("user-input-") ? msg.id.slice("user-input-".length) : null;
+}
+
 function QueenMessageActions({
   content,
   messageId,
   sessionId,
   initialVote,
   queenTitle,
+  onBranch,
 }: {
   content: string;
   messageId?: string;
   sessionId?: string | null;
   initialVote?: Vote | null;
   queenTitle?: string;
+  /** Fork the conversation into a new session that ends with this reply. */
+  onBranch?: () => void;
 }) {
   const [status, setStatus] = useState<FeedbackStatus>("idle");
   return (
     <div className="flex items-center gap-0.5 mt-1">
       <CopyBtnStatic text={content} />
+      {onBranch && (
+        <button
+          type="button"
+          onClick={onBranch}
+          className="p-1 rounded-md text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40 transition-colors"
+          title="Branch from here — continue in a new session that ends at this reply"
+        >
+          <GitBranch className="w-3 h-3" />
+        </button>
+      )}
       <FeedbackBtns
         messageId={messageId}
         sessionId={sessionId}
@@ -421,7 +442,7 @@ const FILE_INPUT_ACCEPT = [
  * are stripped greedily; trailing whitespace from removed blocks is
  * collapsed so the bubble doesn't render a dangling blank trail.
  */
-function stripSystemReminders(content: string | undefined): string {
+export function stripSystemReminders(content: string | undefined): string {
   if (!content) return content ?? "";
   return content
     .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
@@ -903,6 +924,10 @@ interface ChatPanelProps {
   contextUsage?: Record<string, ContextUsageEntry>;
   /** One-shot composer prefill. Applied to the textarea whenever the value changes. */
   initialDraft?: string | null;
+  /** Offered on queen replies and on logged user messages: fork the
+   *  conversation into a new session at that message. Omitted where
+   *  sessions can't fork (colony chats). */
+  onBranch?: (msg: ChatMessage) => void;
   /** Files staged on another screen (which had no session to upload into) and
    *  handed over to be attached here. Ingested through the same validation the
    *  picker uses, so a handed-over file is subject to every rule a picked one
@@ -2084,6 +2109,7 @@ const MessageBubble = memo(
     onCancelQueued,
     onRetry,
     onEdit,
+    onBranch,
     isQueenBusy,
     onImageClick,
     feedbackSessionId,
@@ -2102,6 +2128,8 @@ const MessageBubble = memo(
     onCancelQueued?: (messageId: string) => void;
     onRetry?: (text: string) => void;
     onEdit?: (text: string) => void;
+    /** Fork the conversation at this message (see ChatPanel's onBranch). */
+    onBranch?: (msg: ChatMessage) => void;
     isQueenBusy?: boolean;
     /** Backend session id used to persist thumbs-up/down votes. */
     feedbackSessionId?: string | null;
@@ -2351,6 +2379,15 @@ const MessageBubble = memo(
                 <Pencil className="w-3 h-3" />
               </button>
             )}
+            {onBranch && userInputTimestamp(msg) && (
+              <button
+                onClick={() => onBranch(msg)}
+                className="p-1 rounded-md text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40 transition-all duration-150"
+                title="Edit in a new branch — continue from just before this message"
+              >
+                <GitBranch className="w-3 h-3" />
+              </button>
+            )}
           </div>
           {msg.queued && (onSteer || onCancelQueued) && (
             <div className="flex items-center gap-1.5">
@@ -2533,6 +2570,7 @@ const MessageBubble = memo(
             sessionId={feedbackSessionId}
             initialVote={initialVote}
             queenTitle={queenTitle}
+            onBranch={onBranch && isQueen ? () => onBranch(msg) : undefined}
           />
         </div>
       </div>
@@ -2594,6 +2632,7 @@ export default function ChatPanel({
   historySessionHasMoreOlder,
   onFetchOlderPageForSession,
   initialDraft,
+  onBranch,
   initialAttachments,
   autoSendToken,
   queenProfileId,
@@ -2653,6 +2692,10 @@ export default function ChatPanel({
     },
     [onSend, activeThread],
   );
+  // Stable for the memoized bubbles, always calling the latest handler.
+  const onBranchRef = useRef(onBranch);
+  onBranchRef.current = onBranch;
+  const handleBubbleBranch = useCallback((m: ChatMessage) => onBranchRef.current?.(m), []);
   const handleBubbleEdit = useCallback((text: string) => {
     setInput(text);
     setTimeout(() => editorRef.current?.focus(), 0);
@@ -2804,7 +2847,13 @@ export default function ChatPanel({
   }, [searchOpen, searchQuery, searchMatchedIds, currentMatchIdx, messages]);
 
   useEffect(() => {
-    if (!initialDraft || initialDraft === lastAppliedDraftRef.current) return;
+    // A cleared draft re-arms this, so the same text can be handed over again
+    // (branching the same message twice, say).
+    if (!initialDraft) {
+      lastAppliedDraftRef.current = null;
+      return;
+    }
+    if (initialDraft === lastAppliedDraftRef.current) return;
     lastAppliedDraftRef.current = initialDraft;
     setInput(initialDraft);
     setTimeout(() => {
@@ -4322,6 +4371,7 @@ export default function ChatPanel({
                 initialVote={feedbackVotes[msg.id]}
                 onRetry={handleBubbleRetry}
                 onEdit={handleBubbleEdit}
+                onBranch={onBranch ? handleBubbleBranch : undefined}
               />
             </div>
           );

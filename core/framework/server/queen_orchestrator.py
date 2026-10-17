@@ -1891,6 +1891,11 @@ async def create_queen(
             from framework.agents.queen.timeline import subscribe_timeline_triggers
 
             _reflection_subs += await subscribe_timeline_triggers(session.event_bus, queen_dir, session.llm)
+            # Session title, written by the worker model after the first turn.
+            from framework.server.session_titles import subscribe_title_trigger
+
+            _title_llm = (session_manager.build_worker_llm() if session_manager is not None else None) or session.llm
+            _reflection_subs += subscribe_title_trigger(session.event_bus, queen_dir, _title_llm)
             session.memory_reflection_subs = _reflection_subs
 
             # Set initial user message based on mode:

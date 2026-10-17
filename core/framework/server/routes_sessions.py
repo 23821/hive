@@ -2221,6 +2221,70 @@ async def handle_session_events_history(request: web.Request) -> web.Response:
     )
 
 
+def _queen_dm_session_dir(session_id: str) -> Path | None:
+    """The on-disk dir of queen DM session ``session_id`` (not a colony's)."""
+    from framework.server.session_manager import _colony_id_for_session_dir, _iter_queen_session_dirs
+
+    if not session_id.startswith("session_") or "/" in session_id or "\\" in session_id:
+        return None
+    for candidate in _iter_queen_session_dirs(session_id):
+        if candidate.is_dir() and _colony_id_for_session_dir(candidate) is None:
+            return candidate
+    return None
+
+
+async def handle_fork_session(request: web.Request) -> web.Response:
+    """POST /api/sessions/{session_id}/fork -- branch a DM session at a point.
+
+    Body: ``{"before_input_at": "<timestamp>"}`` cuts just before the user
+    message sent then (the event timestamp of its ``client_input_received``);
+    omit it to copy the whole session. Returns ``{"session_id", "queen_id"}``
+    of the new session, which opens like any history session. 400 when the
+    point can't be honoured, 404 for an unknown or colony session.
+    """
+    from framework.server.session_fork import ForkError, fork_session_dir
+    from framework.server.session_manager import _generate_session_id
+
+    src = _queen_dm_session_dir(request.match_info["session_id"])
+    if src is None:
+        return web.json_response({"error": "No such queen conversation"}, status=404)
+    try:
+        body = await request.json() if request.can_read_body else {}
+    except Exception:
+        return web.json_response({"error": "Invalid JSON body"}, status=400)
+    before = (body or {}).get("before_input_at")
+    if before is not None and not isinstance(before, str):
+        return web.json_response({"error": "before_input_at must be a timestamp string"}, status=400)
+    try:
+        dst = await asyncio.get_running_loop().run_in_executor(None, lambda: fork_session_dir(src, _generate_session_id(), before_input_at=before))
+    except ForkError as e:
+        return web.json_response({"error": str(e)}, status=400)
+    return web.json_response({"session_id": dst.name, "queen_id": src.parent.parent.name}, status=201)
+
+
+async def handle_set_session_title(request: web.Request) -> web.Response:
+    """PATCH /api/sessions/{session_id}/title -- name a DM session.
+
+    Body: ``{"title": "..."}``; an empty title clears it. A title set here is
+    never replaced by the automatic one.
+    """
+    from framework.server.session_titles import write_title
+
+    session_id = request.match_info["session_id"]
+    session_dir = _queen_dm_session_dir(session_id)
+    if session_dir is None:
+        return web.json_response({"error": "No such queen conversation"}, status=404)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON body"}, status=400)
+    title = body.get("title") if isinstance(body, dict) else None
+    if not isinstance(title, str):
+        return web.json_response({"error": "title must be a string"}, status=400)
+    stored = write_title(session_dir, title, source="user")
+    return web.json_response({"session_id": session_id, "title": stored})
+
+
 async def handle_session_history(request: web.Request) -> web.Response:
     """GET /api/sessions/history — all queen sessions on disk (live + cold).
 
@@ -3174,6 +3238,8 @@ def register_routes(app: web.Application) -> None:
     )
 
     # Session info
+    app.router.add_post("/api/sessions/{session_id}/fork", handle_fork_session)
+    app.router.add_patch("/api/sessions/{session_id}/title", handle_set_session_title)
     app.router.add_post("/api/sessions/{session_id}/reveal", handle_reveal_session_folder)
     app.router.add_post("/api/sessions/{session_id}/report-bundle", handle_report_session_bundle)
     app.router.add_get("/api/sessions/{session_id}/attachment/{filename}", handle_session_attachment)

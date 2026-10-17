@@ -2,6 +2,10 @@
 
 > Full, detailed release notes live in [`docs/releases/`](docs/releases/). The entries below summarize the architecturally significant releases; older entries follow.
 
+## v1.0.6 — Channels
+
+**New:** channels, so a chat app can talk to queens from inside `hive serve` (each chat is a queen session, and the queen's replies, questions and attached files flow back); `hive-cred`, so a script fetches a credential when it uses it. **Changed:** the `credentials` tool no longer reveals secrets into the conversation. **Fixed:** a message that reached a queen while she was starting no longer starts a second one. See [docs/releases/v1.0.6.md](docs/releases/v1.0.6.md).
+
 ## v1.0.5 — Branch Anywhere
 
 **New:** branch a conversation at any message: from a queen reply, or by editing a message you sent in a new branch; conversations title themselves with the worker model, and you can rename them. **Fixed:** creating a queen no longer answers with an error. See [docs/releases/v1.0.5.md](docs/releases/v1.0.5.md).

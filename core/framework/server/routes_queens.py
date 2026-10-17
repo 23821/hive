@@ -147,7 +147,7 @@ async def handle_create_queen(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=400)
     except FileExistsError as e:
         return web.json_response({"error": f"queen id already exists: {e}"}, status=409)
-    schedule_push()
+    schedule_push("queen_profile", entry["id"])
     return web.json_response({"queen": entry}, status=201)
 
 

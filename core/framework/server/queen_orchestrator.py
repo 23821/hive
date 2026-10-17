@@ -690,7 +690,7 @@ async def create_queen(
     # ---- Ambient credentials provider --------------------------------
     # Renders the "Connected integrations" block injected into every Queen
     # phase prompt so the Queen always knows which credentials are connected
-    # without having to call list_credentials. Cached briefly to keep the
+    # without having to run `hive-cred browse`. Cached briefly to keep the
     # per-iteration prompt rebuild cheap; invalidated by routes_credentials
     # when the user adds/removes an integration.
     phase_state.credentials_prompt_provider = _build_credentials_provider(session.id)

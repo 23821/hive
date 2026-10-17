@@ -1564,7 +1564,7 @@ class AgentLoop(AgentProtocol):
             tools.append(build_collect_result_tool())
         if ctx.supports_direct_user_io:
             tools.append(self._build_ask_user_tool())
-            # Single CLI-style credentials tool — browse/collect/attach/reveal.
+            # Single CLI-style credentials tool — help/collect/attach/detach.
             # Queen-facing: it parks the loop for the secure collect form and
             # writes session attachments, both of which need loop internals.
             tools.append(build_credentials_tool())
@@ -4992,11 +4992,12 @@ class AgentLoop(AgentProtocol):
 
                 elif tc.tool_name == "credentials":
                     # --- Single CLI-style credentials tool ---
-                    # All actions except `collect` are non-blocking and
-                    # resolve synchronously via credential_tool helpers.
                     # `collect` stashes a no-secret form spec and parks the
                     # loop (mirrors ask_user) so the user can submit secrets
-                    # that go straight to the encrypted store.
+                    # that go straight to the encrypted store. attach/detach
+                    # are session pins. browse/inspect/reveal were retired in
+                    # favour of the `hive-cred` CLI; a stale call gets the
+                    # replacement command back rather than a value.
                     from framework.agent_loop.internals import (
                         credential_tool as _credtool,
                     )
@@ -5033,12 +5034,9 @@ class AgentLoop(AgentProtocol):
                     else:
                         if _action in ("", "help"):
                             _content = _credtool.render_help()
-                        elif _action == "browse":
-                            _content = _credtool.browse(_ci.get("query"))
-                        elif _action == "inspect":
-                            _content = _credtool.inspect(_cred_id, _cred_account)
-                        elif _action == "reveal":
-                            _content = _credtool.reveal(
+                        elif _action in _credtool.RETIRED_ACTIONS:
+                            _content = _credtool.retired_action_message(
+                                _action,
                                 _cred_id,
                                 _cred_account,
                                 str(_ci.get("key", "") or ""),

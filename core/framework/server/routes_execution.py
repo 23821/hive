@@ -76,8 +76,8 @@ _QUEEN_LIFECYCLE_EXTRAS: frozenset[str] = frozenset(
         # Phase-transition wrappers (method variants are on QueenPhaseState
         # but the queen also sees them as tools).
         "switch_to_independent",
-        # Frontend helpers that live outside phase lists.
-        "list_credentials",
+        # Frontend helpers that live outside phase lists. (list_credentials
+        # used to be here; it was retired in favour of the `hive-cred` CLI.)
         "get_worker_health_summary",
     }
 )

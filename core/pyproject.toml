@@ -35,6 +35,10 @@ Repository = "https://github.com/aden-hive/hive"
 
 [project.scripts]
 hive = "framework.cli:main"
+# Fresh credential values for scripts (`TOK=$(hive-cred token google --account x)`),
+# so an agent never pastes a short-lived OAuth token into a file. Goes through the
+# same store as the tools, so refresh-on-access fires. See framework/credentials/cli.py.
+hive-cred = "framework.credentials.cli:main"
 
 [tool.uv.sources]
 aden-tools = { workspace = true }

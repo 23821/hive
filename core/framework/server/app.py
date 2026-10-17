@@ -1093,6 +1093,10 @@ def create_app(model: str | None = None) -> web.Application:
     register_colonies_routes(app)
     register_colony_tools_routes(app)
     register_sentinel_routes(app)
+
+    from framework.server.channels import register as register_channels
+
+    register_channels(app)
     register_mcp_routes(app)
     register_colony_worker_routes(app)
     register_memory_routes(app)

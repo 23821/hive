@@ -14,7 +14,7 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -283,6 +283,10 @@ class Session:
     # fallback, so most growth-queen DMs have nothing to do with the CRM.
     # Setup-only behaviour (the reveal nudge) keys off this.
     crm_setup: bool = False
+    # The channel (an installed chat-app integration, see framework.server.channels)
+    # that carries this conversation, e.g. "onebot". Persisted in meta.json, so a
+    # resume restores it. The dashboard's queen pages leave these sessions alone.
+    channel: str | None = None
     # Colony name: set when a worker is loaded from a colony
     colony_id: str | None = None
     # Session mode discriminator. "dm" = queen DM session under
@@ -388,6 +392,7 @@ class SessionManager:
         # Strong references for fire-and-forget background tasks (e.g. shutdown
         # reflections) so they aren't garbage-collected before completion.
         self._background_tasks: set[asyncio.Task] = set()
+        self._session_listeners: list[Callable[[Session], None]] = []
 
         # Run one-time v2 directory structure migration
         from framework.storage.migrate_v2 import run_migration as run_v2
@@ -543,7 +548,22 @@ class SessionManager:
         async with self._lock:
             self._sessions[resolved_id] = session
 
+        # Before the queen starts, so a listener hears everything she says.
+        for listener in list(self._session_listeners):
+            try:
+                listener(session)
+            except Exception:
+                logger.warning("session listener failed for %s", resolved_id, exc_info=True)
         return session
+
+    def add_session_listener(self, listener: Callable[[Session], None]) -> Callable[[], None]:
+        """Call ``listener`` with each session as it goes live, created or resumed.
+
+        A resumed session is a new :class:`Session` (with a new event bus) under the
+        same id. Returns a function that removes the listener.
+        """
+        self._session_listeners.append(listener)
+        return lambda: self._session_listeners.remove(listener) if listener in self._session_listeners else None
 
     def _resume_queen_name(self, session_id: str) -> str | None:
         """Best-effort queen identity lookup for a persisted session."""
@@ -2082,6 +2102,7 @@ class SessionManager:
         return {
             "session_id": d.name,
             "title": meta.get("title") or None,
+            "channel": meta.get("channel") or None,
             "forked_from": (meta.get("forked_from") or {}).get("session_id"),
             "cold": True,  # caller overrides for live sessions
             "live": False,

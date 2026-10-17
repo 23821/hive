@@ -48,6 +48,7 @@ if TYPE_CHECKING:
         ToolResultEvent,
     )
     from framework.loader.agent_loader import AgentLoader
+    from framework.server.channels import Channel, ChannelError, ChannelHost, QueenOutput
     from framework.server.sse import SSEResponse as SSEResponse  # not in __all__: it needs the server extra
     from framework.storage.conversation_store import FileConversationStore
     from framework.tracker.decision_tracker import DecisionTracker
@@ -108,6 +109,11 @@ _EXPORTS: dict[str, str] = {
     "get_api_base": "framework.config",
     # Serving (needs the ``server`` extra).
     "SSEResponse": "framework.server.sse",
+    # Channels: chat apps that reach queens from inside ``hive serve`` (see framework.server.channels).
+    "Channel": "framework.server.channels",
+    "ChannelError": "framework.server.channels",
+    "ChannelHost": "framework.server.channels",
+    "QueenOutput": "framework.server.channels",
 }
 
 __all__ = [
@@ -121,6 +127,9 @@ __all__ = [
     "AgentResult",
     "AgentSpec",
     "AnthropicProvider",
+    "Channel",
+    "ChannelError",
+    "ChannelHost",
     "ColonyConfig",
     "ColonyRuntime",
     "ConversationStore",
@@ -138,6 +147,7 @@ __all__ = [
     "LoopConfig",
     "Message",
     "MockLLMProvider",
+    "QueenOutput",
     "ReasoningDeltaEvent",
     "ReasoningStartEvent",
     "RuntimeConfig",

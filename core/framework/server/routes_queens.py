@@ -414,11 +414,12 @@ async def handle_queen_session(request: web.Request) -> web.Response:
     # When multiple DM sessions for this queen are live at once (e.g. the
     # user created a new session, then navigated away and back), return
     # the most recently loaded one so we don't resurrect a stale older
-    # session ahead of a freshly created one.
+    # session ahead of a freshly created one. A channel's sessions (a QQ
+    # group, say) are its own conversations, not the user's DM.
     live_matches = [
         s
         for s in manager.list_sessions()
-        if s.queen_name == queen_id and s.colony_id is None and s.worker_path is None and not getattr(s, "superseded_by", None)
+        if s.queen_name == queen_id and s.colony_id is None and s.worker_path is None and not getattr(s, "superseded_by", None) and s.channel is None
     ]
     if live_matches:
         latest = max(live_matches, key=lambda s: s.loaded_at)
@@ -464,7 +465,7 @@ async def handle_queen_session(request: web.Request) -> web.Response:
                 # Skip colony-fork duplicates and sessions retired by a
                 # task_create(new_session=true) fork — the successor
                 # session is the one to resume.
-                if meta.get("colony_fork") or meta.get("superseded_by"):
+                if meta.get("colony_fork") or meta.get("superseded_by") or meta.get("channel"):
                     continue
                 resume_from = candidate.name
                 break
@@ -632,7 +633,8 @@ async def handle_new_queen_session(request: web.Request) -> web.Response:
         )
 
     # Park any previously-live DM sessions for this queen before minting a
-    # fresh one. Without this, every click of "New Session" leaks a live
+    # fresh one. A channel's sessions (a QQ group, say) are other people's
+    # chats and are never parked. Without this, every click of "New Session" leaks a live
     # entry into manager._sessions and the session-switcher dropdown shows
     # duplicate "Live" badges for sessions whose UI has already moved on
     # (the SSE stream + URL follow the fresh session id; the old one is
@@ -649,7 +651,7 @@ async def handle_new_queen_session(request: web.Request) -> web.Response:
         [
             s
             for s in manager.list_sessions()
-            if s.queen_name == queen_id and getattr(s, "colony_id", None) is None and getattr(s, "worker_path", None) is None
+            if s.queen_name == queen_id and getattr(s, "colony_id", None) is None and getattr(s, "worker_path", None) is None and s.channel is None
         ]
         if park_others
         else []

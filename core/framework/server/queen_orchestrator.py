@@ -668,6 +668,8 @@ async def create_queen(
             # create, and a resume passes no body at all.
             if _persisted.get("crm_setup"):
                 session.crm_setup = True
+            if isinstance(_persisted.get("channel"), str):
+                session.channel = _persisted["channel"]
         except (json.JSONDecodeError, OSError):
             persisted_phase = None
     bound_to_colony = bool(session.colony_id or session.binding or session.worker_path)

@@ -57,3 +57,55 @@ result = await loop.execute(ctx)
 - **`import hive` is cheap.** Each name is imported when first used.
 - **Stability:** names exported from `hive` follow semantic versioning from 1.0.1. Anything
   imported from `framework.*` is Hive's internals and may change in any release.
+
+## Channels: reach queens from a chat app
+
+A channel runs inside `hive serve` and connects a chat app to a queen. Each conversation in the
+app (a group, a private chat) is one queen session, which also shows in the dashboard.
+
+Register a factory in the `hive.channels` entry-point group:
+
+```toml
+[project.entry-points."hive.channels"]
+mychat = "mychat:MyChatChannel"
+```
+
+`hive serve` calls it with a `ChannelHost` and starts the object it returns when the user turns
+the channel on in `configuration.json`:
+
+```json
+{"channels": {"mychat": {"enabled": true, "token": "..."}}}
+```
+
+```python
+from hive import ChannelError, ChannelHost, QueenOutput
+
+
+class MyChatChannel:
+    def __init__(self, host: ChannelHost) -> None:
+        self.host = host  # host.config is the channel's section above; host.state_dir is for its files
+
+    async def start(self) -> None: ...  # connect, then return; the work runs in background tasks
+
+    async def stop(self) -> None: ...
+
+    async def on_chat_message(self, chat_id: str, text: str, images: list[bytes]) -> None:
+        session_id = await self.host.open_session("queen_growth", session_id=self.saved.get(chat_id), title=f"MyChat · {chat_id}")
+        self.host.subscribe(session_id, lambda out: self.reply(chat_id, out))
+        await self.host.send(session_id, text, images=images)
+
+    async def reply(self, chat_id: str, out: QueenOutput) -> None:
+        ...  # out.kind is "message", "question" (out.questions), "files" (out.files) or "error"
+```
+
+- **`open_session`** resumes the conversation's earlier session, or starts a new one named `title`.
+  Keep the id it returns.
+- **`send`** resumes a stopped session itself and saves `images` like dashboard attachments. It
+  returns the session that took the message: it differs after the queen moves the conversation on.
+  It raises `ChannelError` when the session is locked; open a new one.
+- **`subscribe`** hears each finished model turn's text, each `ask_user` question, the files she
+  hands over with `attach_file`, and each failed model call, in order, including after the session is resumed and for messages typed in the
+  dashboard.
+- The dashboard leaves channel sessions alone: opening the queen or starting a new chat with her
+  never picks or stops one. `GET /api/channels` lists installed channels as `running`, `off` or
+  `failed` (with the error).

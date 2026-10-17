@@ -173,6 +173,42 @@ async def handle_chat(request: web.Request) -> web.Response:
     display_message = body.get("display_message")
     image_content = body.get("images") or None  # list[dict] | None
 
+    message, image_content, saved_image_paths = await prepare_queen_input(session, message, image_content)
+
+    logger.debug(
+        "[handle_chat] session_id=%s, message_len=%d, has_images=%s",
+        session.id,
+        len(message),
+        bool(image_content),
+    )
+    logger.debug("[handle_chat] session.queen_executor=%s", session.queen_executor)
+
+    if not message and not image_content:
+        return web.json_response({"error": "message is required"}, status=400)
+
+    try:
+        status = await deliver_to_queen(
+            request.app["manager"],
+            session,
+            message,
+            image_content=image_content,
+            display_message=display_message,
+            saved_image_paths=saved_image_paths,
+        )
+    except QueenUnavailableError:
+        return web.json_response({"error": "Queen not available"}, status=503)
+    return web.json_response({"status": status, "delivered": True})
+
+
+async def prepare_queen_input(session: Any, message: str, image_content: list[dict] | None) -> tuple[str, list[dict] | None, list[str]]:
+    """Save a user message's attachments into the session and shape them for the queen.
+
+    ``image_content`` holds OpenAI ``image_url`` blocks (data URIs, or
+    ``hive-attachment://`` refs to files already uploaded). Returns the
+    message (with extracted file text and the saved-attachments listing
+    appended), the blocks the queen should see, and the saved files' paths
+    relative to the session directory.
+    """
     # Persist uploaded attachments to disk and separate PDFs from images.
     # PDFs are emitted as OpenAI-native `file` blocks so LiteLLM auto-remaps
     # them per provider (Anthropic document, Gemini inline_data, OpenAI
@@ -683,17 +719,38 @@ async def handle_chat(request: web.Request) -> web.Response:
         # `file` blocks rather than rendered page images).
         image_content = images_only if images_only else None
 
-    logger.debug(
-        "[handle_chat] session_id=%s, message_len=%d, has_images=%s",
-        session.id,
-        len(message),
-        bool(image_content),
-    )
-    logger.debug("[handle_chat] session.queen_executor=%s", session.queen_executor)
+    return message, image_content, saved_image_paths
 
-    if not message and not image_content:
-        return web.json_response({"error": "message is required"}, status=400)
 
+# How long deliver_to_queen waits for a starting queen, in 0.1 s ticks.
+_QUEEN_START_WAIT_TICKS = 300
+
+
+class QueenUnavailableError(RuntimeError):
+    """The session's queen is dead and could not be revived."""
+
+
+async def deliver_to_queen(
+    manager: Any,
+    session: Any,
+    message: str,
+    *,
+    image_content: list[dict] | None = None,
+    display_message: str | None = None,
+    saved_image_paths: list[str] | None = None,
+) -> str:
+    """Hand a user message to the session's queen, reviving her if she is dead.
+
+    Returns ``"queen"``, or ``"queen_revived"`` when she had to be revived.
+    Raises :class:`QueenUnavailableError` when she can't be.
+    """
+    # A queen whose task is running but who has no executor yet is still starting (a session
+    # just created or resumed), not dead: wait for her rather than start a second queen.
+    queen_task = session.queen_task
+    for _ in range(_QUEEN_START_WAIT_TICKS):
+        if session.queen_executor is not None or queen_task is None or queen_task.done():
+            break
+        await asyncio.sleep(0.1)
     queen_executor = session.queen_executor
     if queen_executor is not None:
         logger.debug("[handle_chat] Queen executor exists, looking for 'queen' node...")
@@ -772,12 +829,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             except Exception as e:
                 logger.exception("[handle_chat] inject_event() failed: %s", e)
                 raise
-            return web.json_response(
-                {
-                    "status": "queen",
-                    "delivered": True,
-                }
-            )
+            return "queen"
         else:
             if node is None:
                 logger.error(
@@ -795,7 +847,6 @@ async def handle_chat(request: web.Request) -> web.Response:
 
     # Queen is dead — try to revive her
     logger.warning("[handle_chat] Queen is dead for session '%s', reviving on /chat request", session.id)
-    manager: Any = request.app["manager"]
     try:
         logger.debug("[handle_chat] Calling manager.revive_queen()...")
         await manager.revive_queen(session)
@@ -806,15 +857,10 @@ async def handle_chat(request: web.Request) -> web.Response:
         _revived_node = _revived_executor.node_registry.get("queen") if _revived_executor else None
         if _revived_node is not None and hasattr(_revived_node, "inject_event"):
             await _revived_node.inject_event(message, is_client_input=True, image_content=image_content)
-        return web.json_response(
-            {
-                "status": "queen_revived",
-                "delivered": True,
-            }
-        )
+        return "queen_revived"
     except Exception as e:
         logger.exception("[handle_chat] Failed to revive queen: %s", e)
-        return web.json_response({"error": "Queen not available"}, status=503)
+        raise QueenUnavailableError(session.id) from e
 
 
 async def handle_queen_context(request: web.Request) -> web.Response:

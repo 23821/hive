@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     from framework.loader.agent_loader import AgentLoader
     from framework.server.channels import Channel, ChannelError, ChannelHost, QueenOutput
     from framework.server.sse import SSEResponse as SSEResponse  # not in __all__: it needs the server extra
+    from framework.server.turn_context import TurnContext, TurnContextHost
     from framework.storage.conversation_store import FileConversationStore
     from framework.tracker.decision_tracker import DecisionTracker
 
@@ -114,6 +115,9 @@ _EXPORTS: dict[str, str] = {
     "ChannelError": "framework.server.channels",
     "ChannelHost": "framework.server.channels",
     "QueenOutput": "framework.server.channels",
+    # Turn context: what installed packages put in front of a queen before her turn (see framework.server.turn_context).
+    "TurnContext": "framework.server.turn_context",
+    "TurnContextHost": "framework.server.turn_context",
 }
 
 __all__ = [
@@ -160,6 +164,8 @@ __all__ = [
     "ToolResult",
     "ToolResultEvent",
     "ToolUse",
+    "TurnContext",
+    "TurnContextHost",
     "Worker",
     "get_api_base",
     "get_api_key",

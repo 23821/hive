@@ -895,6 +895,7 @@ class AgentLoop(AgentProtocol):
             TrackerSnapshotReminderSource,
             WorkerTrackerSnapshotReminderSource,
         )
+        from framework.agent_loop.turn_context_reminder import TurnContextReminderSource
         from framework.tasks.reminders import TaskReminderSource
 
         self._reminder_hub = ReminderHub()
@@ -902,6 +903,7 @@ class AgentLoop(AgentProtocol):
         self._reminder_hub.register(ColonyParallelNudgeSource())
         self._reminder_hub.register(ActiveWorkersReminderSource())
         self._reminder_hub.register(PastConversationsReminderSource())
+        self._reminder_hub.register(TurnContextReminderSource())
         # Queen-only: the searchable-tools manifest + skills catalog ride the
         # conversation as <system-reminder>s Self-skip for non-queen streams.
         self._reminder_hub.register(SearchableToolsReminderSource())

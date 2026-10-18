@@ -1601,6 +1601,7 @@ async def create_queen(
                 conversation_store=conversation_store,
             )
 
+            from framework.server.turn_context import for_session as turn_context_for_session
             from framework.tracker.decision_tracker import DecisionTracker
 
             queen_spec = AgentSpec(
@@ -1673,6 +1674,10 @@ async def create_queen(
                 # Same scope search_messages uses; the live session is
                 # excluded (it's already in context).
                 past_conversation_recall_provider=lambda text: _recall_past_conversations(session, text, queen_dir.name),
+                # Whatever installed turn-context packages (e.g. voice
+                # examples) want her to see before she answers; nothing
+                # when none is installed and enabled.
+                turn_context_provider=turn_context_for_session(session),
                 # Resolves the on-disk colony binding for tool-budget
                 # checkpoint reminders (tracker + fleet snapshots).
                 # Returns None for an independent-mode queen (no colony

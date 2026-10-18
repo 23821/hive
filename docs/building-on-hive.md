@@ -109,3 +109,47 @@ class MyChatChannel:
 - The dashboard leaves channel sessions alone: opening the queen or starting a new chat with her
   never picks or stops one. `GET /api/channels` lists installed channels as `running`, `off` or
   `failed` (with the error).
+
+## Turn context: show a queen something before each turn
+
+A turn-context package runs inside `hive serve`. Before a queen answers a user message, it gets
+her id and the message, and the text it returns reaches her as a `<system-reminder>` just ahead of
+that message. Use it for context that depends on what was said: examples in her voice, notes
+from your own store.
+
+Register a factory in the `hive.turn_context` entry-point group:
+
+```toml
+[project.entry-points."hive.turn_context"]
+mycontext = "mycontext:MyContext"
+```
+
+`hive serve` calls it with a `TurnContextHost` and starts the object it returns when the user
+turns it on in `configuration.json`:
+
+```json
+{"turn_context": {"mycontext": {"enabled": true}}}
+```
+
+```python
+from hive import TurnContextHost
+
+
+class MyContext:
+    def __init__(self, host: TurnContextHost) -> None:
+        self.host = host  # host.config is the section above; host.state_dir is for its files
+
+    async def start(self) -> None: ...  # return quickly; load models or indexes in a background task
+
+    async def stop(self) -> None: ...
+
+    async def context(self, queen_id: str, message: str) -> str | None:
+        return None  # or the text she should see before answering
+```
+
+- `message` is what the queen receives, including any prefix a channel adds (sender, time, recent
+  group chat).
+- Return `None` when there is nothing to add. The text stays in the conversation like any reminder,
+  so keep it short.
+- A package that takes longer than 5 seconds or raises is skipped for that turn; one that fails to
+  start is logged and left out. Neither holds the turn.

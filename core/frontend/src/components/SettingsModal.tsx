@@ -65,13 +65,29 @@ export default function SettingsModal({ open, onClose, initialSection }: Setting
   // null = not yet loaded from the runtime (Switch renders disabled until
   // the GET resolves). Loaded lazily on first visit to the Developer tab.
   const [adaptiveBudget, setAdaptiveBudget] = useState<boolean | null>(null);
+  const [stallCheck, setStallCheck] = useState<boolean | null>(null);
+  // Whether the judge slot is set: the stall check can't run without it.
+  const [judgeSet, setJudgeSet] = useState<boolean | null>(null);
   useEffect(() => {
     if (!open || activeSection !== "developer" || adaptiveBudget !== null) return;
     configApi
       .getFeatures()
-      .then((r) => setAdaptiveBudget(r.features.adaptive_tool_budget))
-      .catch(() => setAdaptiveBudget(true));
+      .then((r) => {
+        setAdaptiveBudget(r.features.adaptive_tool_budget);
+        setStallCheck(Boolean(r.features.stall_check));
+      })
+      .catch(() => {
+        setAdaptiveBudget(true);
+        setStallCheck(false);
+      });
   }, [open, activeSection, adaptiveBudget]);
+  useEffect(() => {
+    if (!open || activeSection !== "developer") return;
+    configApi
+      .getLlmSections()
+      .then((s) => setJudgeSet(Boolean(s.judge)))
+      .catch(() => setJudgeSet(false));
+  }, [open, activeSection]);
   const [rateLimits, setRateLimits] = useState<RateLimitEntry[] | null>(null);
   const [rateLimitDirty, setRateLimitDirty] = useState<Record<string, number>>({});
   const [rateLimitSaving, setRateLimitSaving] = useState(false);
@@ -537,6 +553,33 @@ export default function SettingsModal({ open, onClose, initialSection }: Setting
                       configApi
                         .setFeatures({ adaptive_tool_budget: next })
                         .catch(() => setAdaptiveBudget(!next));
+                    }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between rounded-md border border-border/50 bg-muted/10 px-3 py-2.5">
+                  <div className="min-w-0 pr-3">
+                    <p className="text-[12px] font-medium text-foreground">Stall check</p>
+                    <p className="text-[11px] text-muted-foreground leading-snug">
+                      When a queen ends a turn, a judge model checks whether she announced an action and stopped without
+                      taking it, and if so reminds her once to carry it out. Applies to running sessions.
+                    </p>
+                    {judgeSet === false && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection("byok")}
+                        className="mt-1 text-[11px] font-medium text-primary underline-offset-2 hover:underline"
+                      >
+                        Needs a judge: set up AI Model → Judge →
+                      </button>
+                    )}
+                  </div>
+                  <Switch
+                    checked={stallCheck ?? false}
+                    disabled={stallCheck === null || (judgeSet !== true && !stallCheck)}
+                    onChange={(next) => {
+                      setStallCheck(next);
+                      configApi.setFeatures({ stall_check: next }).catch(() => setStallCheck(!next));
                     }}
                   />
                 </div>

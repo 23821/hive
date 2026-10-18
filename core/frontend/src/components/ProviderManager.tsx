@@ -17,16 +17,18 @@ import { ApiError } from "@/api/client";
  * single source of truth for what the runtime uses.
  */
 
-const ROLES: LlmRole[] = ["llm", "worker_llm", "vision_fallback"];
+const ROLES: LlmRole[] = ["llm", "worker_llm", "vision_fallback", "judge"];
 const ROLE_TITLE: Record<LlmRole, string> = {
   llm: "LLM (main)",
   worker_llm: "Worker",
   vision_fallback: "Vision fallback",
+  judge: "Judge",
 };
 const ROLE_HINT: Record<LlmRole, string> = {
   llm: "Powers every queen session. Always set.",
   worker_llm: "Colony workers. Cleared → workers use the main LLM.",
   vision_fallback: "Captions images when the main model has no vision.",
+  judge: "Not a chat model: checks queen turns for Developer → Stall check.",
 };
 
 const TEMPLATE: LlmSection = {
@@ -36,6 +38,15 @@ const TEMPLATE: LlmSection = {
   api_key: "sk-...",
   max_tokens: 8196,
   max_context_tokens: 100000,
+};
+
+// The judge speaks a judging protocol, not chat; fill in your judge vendor's values.
+const JUDGE_TEMPLATE: LlmSection = {
+  protocol: "typesafe",
+  api_base: "https://judge.example.com/v1",
+  model: "judge-model-id",
+  api_key: "...",
+  threshold: 0.5,
 };
 
 function keyLabel(s: LlmSection): string {
@@ -59,6 +70,7 @@ export default function ProviderManager() {
     llm: null,
     worker_llm: null,
     vision_fallback: null,
+    judge: null,
   });
   const [library, setLibrary] = useState<Record<string, LlmSection>>({});
   const [loading, setLoading] = useState(true);
@@ -105,7 +117,7 @@ export default function ProviderManager() {
     const current = sections[role];
     // A fresh slot starts from the main LLM section (same endpoint is the
     // common case) or the generic template.
-    const base = current ?? sections.llm ?? TEMPLATE;
+    const base = current ?? (role === "judge" ? JUDGE_TEMPLATE : (sections.llm ?? TEMPLATE));
     setEditorError(null);
     setEditor({ kind: "role", role, text: JSON.stringify(base, null, 2) });
   };

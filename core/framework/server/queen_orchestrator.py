@@ -1898,6 +1898,14 @@ async def create_queen(
 
             _title_llm = (session_manager.build_worker_llm() if session_manager is not None else None) or session.llm
             _reflection_subs += subscribe_title_trigger(session.event_bus, queen_dir, _title_llm)
+            # Developer option: a judge catches turns that announce work and stop.
+            from framework.server.stall_check import subscribe_stall_check
+
+            def _queen_node():
+                executor = session.queen_executor
+                return executor.node_registry.get("queen") if executor is not None else None
+
+            _reflection_subs += subscribe_stall_check(session.event_bus, _queen_node)
             session.memory_reflection_subs = _reflection_subs
 
             # Set initial user message based on mode:

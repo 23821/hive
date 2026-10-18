@@ -849,7 +849,7 @@ async def handle_update_sentinel_config(request: web.Request) -> web.Response:
 # Whitelisted top-level boolean keys in configuration.json that the
 # features endpoint may read/write. Keep this in sync with the getters
 # in framework.config (e.g. get_adaptive_tool_budget_enabled).
-_FEATURE_KEYS = ("adaptive_tool_budget", "email_senders", "memory_timeline")
+_FEATURE_KEYS = ("adaptive_tool_budget", "email_senders", "memory_timeline", "stall_check")
 
 
 def _apply_adaptive_budget_flag(request: web.Request, enabled: bool) -> int:
@@ -896,6 +896,7 @@ async def handle_get_features(request: web.Request) -> web.Response:
         get_adaptive_tool_budget_enabled,
         get_email_senders_enabled,
         get_memory_timeline_enabled,
+        get_stall_check_enabled,
     )
 
     return web.json_response(
@@ -904,6 +905,7 @@ async def handle_get_features(request: web.Request) -> web.Response:
                 "adaptive_tool_budget": get_adaptive_tool_budget_enabled(),
                 "email_senders": get_email_senders_enabled(),
                 "memory_timeline": get_memory_timeline_enabled(),
+                "stall_check": get_stall_check_enabled(),
             }
         }
     )
@@ -1107,7 +1109,8 @@ async def handle_update_rate_limits(request: web.Request) -> web.Response:
 # as typed. Absolute accuracy by construction.
 # ---------------------------------------------------------------------------
 
-_ROLE_SECTIONS = ("llm", "worker_llm", "vision_fallback")
+# "judge" holds the stall check's judge (framework.server.stall_check); it is not a chat model.
+_ROLE_SECTIONS = ("llm", "worker_llm", "vision_fallback", "judge")
 
 
 async def handle_get_llm_sections(request: web.Request) -> web.Response:
@@ -1134,7 +1137,8 @@ async def _write_role_section(request: web.Request, role: str, section: dict, va
         if env_var:
             api_key = os.environ.get(str(env_var), "")
 
-    if validate and api_key and api_base:
+    # A judge isn't a chat model, so the chat key check doesn't apply; it is tried when it judges.
+    if validate and api_key and api_base and role != "judge":
         check = await _validate_provider_key(provider, api_key, api_base=api_base, model=str(section["model"]))
         if check.get("valid") is False:
             return web.json_response(
@@ -1178,7 +1182,7 @@ async def handle_put_llm_section(request: web.Request) -> web.Response:
     role = str(body.get("role") or "")
     if role not in _ROLE_SECTIONS:
         return web.json_response(
-            {"error": "'role' must be llm | worker_llm | vision_fallback"},
+            {"error": "'role' must be llm | worker_llm | vision_fallback | judge"},
             status=400,
         )
     section = body.get("section", None)
@@ -1285,7 +1289,7 @@ async def handle_apply_provider_library(request: web.Request) -> web.Response:
     role = str(body.get("role") or "")
     if role not in _ROLE_SECTIONS:
         return web.json_response(
-            {"error": "'role' must be llm | worker_llm | vision_fallback"},
+            {"error": "'role' must be llm | worker_llm | vision_fallback | judge"},
             status=400,
         )
     name = str(body.get("name") or "").strip()

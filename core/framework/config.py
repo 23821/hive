@@ -891,6 +891,20 @@ def get_email_senders_enabled() -> bool:
     return False
 
 
+def get_stall_check_enabled() -> bool:
+    """Return whether a judge checks queen turns that announce work and stop.
+
+    See ``framework.server.stall_check``; it also needs the ``judge`` slot.
+    Resolution: ``HIVE_STALL_CHECK`` env var when set, else the top-level
+    ``stall_check`` boolean in configuration.json (the features endpoint
+    writes it). Default: off.
+    """
+    raw = os.environ.get("HIVE_STALL_CHECK")
+    if raw is not None and raw.strip() != "":
+        return raw.strip().lower() not in ("0", "false", "no", "off")
+    return bool(get_hive_config().get("stall_check", False))
+
+
 def get_memory_timeline_enabled() -> bool:
     """Return whether queens keep a dated timeline of what the user mentions.
 

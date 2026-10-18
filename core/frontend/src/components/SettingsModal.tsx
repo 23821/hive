@@ -531,7 +531,7 @@ export default function SettingsModal({ open, onClose, initialSection }: Setting
                   <div className="min-w-0 pr-3">
                     <p className="text-[12px] font-medium text-foreground">Runtime logs</p>
                     <p className="text-[11px] text-muted-foreground leading-snug">
-                      Show the floating drawer in the bottom-right that streams stdout/stderr from the Electron main process.
+                      Show a floating drawer in the bottom-right with the Hive server's log (last 500 lines), updated every few seconds.
                     </p>
                   </div>
                   <Switch checked={showRuntimeLogs} onChange={setShowRuntimeLogs} />

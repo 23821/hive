@@ -2,6 +2,10 @@
 
 > Full, detailed release notes live in [`docs/releases/`](docs/releases/). The entries below summarize the architecturally significant releases; older entries follow.
 
+## v1.0.7 — Follow Through
+
+**New:** the stall check (Settings → Developer, off by default): a judge model catches a queen who announced an action and ended her turn without it, and reminds her once; the Judge slot for it under AI Model; the Runtime logs drawer shows the server's log. **Changed:** no first-run wizard; without a model, the chat links to the model settings. **Fixed:** a key saved in `configuration.json` is no longer asked for on every refresh. See [docs/releases/v1.0.7.md](docs/releases/v1.0.7.md).
+
 ## v1.0.6 — Channels
 
 **New:** channels, so a chat app can talk to queens from inside `hive serve` (each chat is a queen session, and the queen's replies, questions and attached files flow back); `hive-cred`, so a script fetches a credential when it uses it. **Changed:** the `credentials` tool no longer reveals secrets into the conversation. **Fixed:** a message that reached a queen while she was starting no longer starts a second one. See [docs/releases/v1.0.6.md](docs/releases/v1.0.6.md).

@@ -2324,7 +2324,9 @@ class AgentLoop(AgentProtocol):
                             )
                         # Emit the error via SSE so the frontend renders
                         # it in the chat, then persist it in the conversation.
-                        visible_error = f"[Error: {error_msg}. Please try again.]"
+                        from framework.agent_loop.visible_error import visible_error as _visible_error
+
+                        visible_error = _visible_error(error_msg)
                         if self._event_bus and ctx.emits_client_io:
                             await self._event_bus.emit_client_output_delta(
                                 stream_id=stream_id,

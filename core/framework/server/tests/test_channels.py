@@ -154,6 +154,23 @@ async def test_a_failed_model_call_is_heard_as_an_error(manager):
 
 
 @pytest.mark.asyncio
+async def test_a_failed_call_a_gateway_returned_as_a_reply_is_heard_as_an_error(manager):
+    host = ChannelHost("onebot", manager, {})
+    sid = await host.open_session(QUEEN)
+    heard = _heard(host, sid)
+    error = "[Error: LLM call failed: Stream error: Authentication Fails, Your api key: ****abcd is invalid. Please try again.]"
+
+    await _say(
+        manager.get_session(sid).event_bus,
+        (EventType.CLIENT_OUTPUT_DELTA, {"snapshot": error}),
+        (EventType.LLM_TURN_COMPLETE, {"stop_reason": "stop"}),
+        (EventType.CLIENT_INPUT_REQUESTED, {"park_reason": "turn_done"}),
+    )
+
+    assert [(o.kind, o.text) for o in heard] == [("error", error)]
+
+
+@pytest.mark.asyncio
 async def test_a_stopped_session_is_resumed_and_still_heard(manager):
     host = ChannelHost("onebot", manager, {})
     sid = await host.open_session(QUEEN)

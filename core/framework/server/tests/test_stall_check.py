@@ -85,6 +85,22 @@ async def test_a_turn_the_judge_finds_fine_is_left_alone(config):
 
 
 @pytest.mark.asyncio
+async def test_a_failed_model_call_is_not_judged(config):
+    bus, node, judge = _watch(0.95)
+
+    await _turn(
+        bus,
+        (EventType.CLIENT_INPUT_RECEIVED, {"content": "[Cy(7)]: （戳了戳你）"}),
+        # A gateway returned the failure as an ordinary reply.
+        (EventType.CLIENT_OUTPUT_DELTA, {"snapshot": "[Error: LLM call failed: Stream error: Authentication Fails. Please try again.]"}),
+        (EventType.CLIENT_INPUT_REQUESTED, {"park_reason": "turn_done"}),
+    )
+
+    assert judge.states == []
+    node.inject_event.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_nothing_is_judged_while_the_option_is_off(config):
     config["stall_check"] = False
     bus, node, judge = _watch(0.95)

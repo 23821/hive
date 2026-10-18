@@ -83,6 +83,7 @@ def subscribe_stall_check(
     judges: dict[str, Judge] | None = None,
 ) -> list[str]:
     """Watch the queen's turns on ``event_bus``; ``queen_node()`` returns the node to remind."""
+    from framework.agent_loop.visible_error import is_visible_error
     from framework.host.event_bus import EventType
 
     judges = judges or _JUDGES
@@ -133,7 +134,8 @@ def subscribe_stall_check(
             turn["tools"].append(str(data.get("tool_name") or ""))
             turn.update(reasoning="", reply="")
         elif event.type == EventType.CLIENT_INPUT_REQUESTED and data.get("park_reason") == "turn_done":
-            if turn["judged"] or not turn["user"] or not turn["reply"].strip():
+            # A failed model call (even one a gateway returned as a reply) announced nothing.
+            if turn["judged"] or not turn["user"] or not turn["reply"].strip() or is_visible_error(turn["reply"]):
                 return
             turn["judged"] = True  # one judgment, and at most one reminder, per user message
             task = asyncio.create_task(check(turn["user"], turn["reasoning"], turn["reply"], list(turn["tools"])))

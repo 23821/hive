@@ -282,12 +282,17 @@ class _Subscription:
 
     def attach(self, session: Session, on_forked: Callable[[str, str], None]) -> None:
         """Listen on ``session``'s event bus (a resumed session has a new one)."""
+        from framework.agent_loop.visible_error import is_visible_error
         from framework.host.event_bus import EventType
 
         if session.event_bus is self._bus:
             return
         self._detach()
         pending = ""  # the text of the model turn in progress
+
+        def reply_kind(text: str) -> Literal["message", "error"]:
+            # A model gateway can return a failed call as an ordinary reply.
+            return "error" if is_visible_error(text) else "message"
 
         async def on_event(event: Any) -> None:
             nonlocal pending
@@ -298,7 +303,7 @@ class _Subscription:
                 pending = data.get("snapshot") or pending
             elif event.type == EventType.LLM_TURN_COMPLETE:
                 if pending.strip():
-                    self._put("message", text=pending)
+                    self._put(reply_kind(pending), text=pending)
                 pending = ""
             elif event.type == EventType.CLIENT_INPUT_REQUESTED:
                 reason = data.get("park_reason")
@@ -308,7 +313,7 @@ class _Subscription:
                 elif reason == "llm_error" and pending.strip():
                     self._put("error", text=pending)
                 elif pending.strip():
-                    self._put("message", text=pending)
+                    self._put(reply_kind(pending), text=pending)
                 pending = ""
             elif event.type == EventType.SESSION_FORKED:
                 new_id = data.get("new_session_id")

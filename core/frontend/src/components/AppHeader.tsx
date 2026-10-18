@@ -12,6 +12,7 @@ import {
   GraduationCap,
 } from "lucide-react";
 import SettingsModal from "@/components/SettingsModal";
+import { onOpenSettings, type SettingsSection } from "@/lib/settings-events";
 import ColonySettingsModal from "@/components/ColonySettingsModal";
 
 /** OpenHive video tutorials — opens in the user's browser. */
@@ -96,7 +97,16 @@ export default function AppHeader({ onOpenQueenProfile }: AppHeaderProps) {
   const { actions, leftActions } = useHeaderActions();
   const { currentModel, currentProvider, availableModels, activeSubscription, subscriptions } = useModel();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<"profile" | "byok">("profile");
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("profile");
+  // Anything can ask for the dialog at a section (the chat's no-model notice does).
+  useEffect(
+    () =>
+      onOpenSettings((section) => {
+        setSettingsSection(section);
+        setSettingsOpen(true);
+      }),
+    [],
+  );
   const [colonySettingsOpen, setColonySettingsOpen] = useState(false);
 
   // Derive active model display label

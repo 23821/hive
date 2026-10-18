@@ -18,8 +18,8 @@ import "./index.css";
 // the runtime is served same-origin and owns its own HIVE_HOME, so there is no
 // sign-in step.
 //   1. RuntimeProvider     — reports the runtime as ready (served alongside us).
-//   2. ConfigurationGate   — requires at least one BYOK LLM provider configured
-//                            (per the runtime's /api/config credentials).
+//   2. ConfigurationGate   — waits for the runtime to listen (never for model
+//                            setup: chats link to the model settings instead).
 //   3. ModelProvider       — fetches the runtime's LLM catalogue.
 //   4. App                 — the main product tree.
 ReactDOM.createRoot(document.getElementById("root")!).render(

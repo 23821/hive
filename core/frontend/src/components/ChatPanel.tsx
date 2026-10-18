@@ -760,6 +760,14 @@ import {
   workerIdFromStreamId,
 } from "@/lib/chat-helpers";
 import { useLazyHistoryWindow } from "@/components/useLazyHistoryWindow";
+import NoModelNotice from "@/components/NoModelNotice";
+import ModelErrorCard, { parseModelError } from "@/components/ModelErrorCard";
+
+/** A queen's reply text: Markdown, or a card when it is a failed model call. */
+function QueenText({ content }: { content: string }) {
+  const error = parseModelError(content);
+  return error ? <ModelErrorCard error={error} /> : <MarkdownContent content={content} />;
+}
 import { msgSummary, trace as traceLoad } from "@/lib/session-load-trace";
 
 type QueenPhase = "independent" | "colony";
@@ -2556,12 +2564,12 @@ const MessageBubble = memo(
                         />
                       </svg>
                     </span>
-                    <MarkdownContent content={span} />
+                    <QueenText content={span} />
                   </div>
                 ))}
               </div>
             ) : (
-              <MarkdownContent content={msg.content} />
+              <QueenText content={msg.content} />
             )}
           </div>
           <QueenMessageActions
@@ -4518,6 +4526,8 @@ export default function ChatPanel({
           onDismiss={onQuestionDismiss}
         />
       ) : (
+        <>
+        <NoModelNotice />
         <form
           onSubmit={handleSubmit}
           className="relative p-4"
@@ -4692,6 +4702,7 @@ export default function ChatPanel({
             )}
           </div>
         </form>
+        </>
       )}
 
       {/* Image carousel modal — portalled to body so it escapes overflow clipping */}

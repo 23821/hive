@@ -364,8 +364,12 @@ async def handle_get_llm_config(request: web.Request) -> web.Response:
     provider = llm.get("provider", "")
     model = llm.get("model", "")
 
-    # Check if an API key is available for the current provider
-    has_key = _resolve_api_key(provider, request) is not None
+    # Whether the runtime can call the active model: the key it would actually use
+    # (configuration.json's own llm.api_key, a key pool, a subscription token,
+    # the credential store or the env var), not only the provider's default env var.
+    from framework.config import get_api_key
+
+    has_key = bool(get_api_key()) or _resolve_api_key(provider, request) is not None
 
     # Check ALL providers for key availability (env vars + credential store)
     connected = []

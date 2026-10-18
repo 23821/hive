@@ -937,6 +937,27 @@ class TestConfigRoutes:
         assert subscriptions["kimi_code"]["default_model"] == "kimi-k2.6"
 
 
+    @pytest.mark.asyncio
+    async def test_a_key_written_in_the_config_counts_as_configured(self, monkeypatch):
+        # A custom endpoint whose key lives in configuration.json, with no
+        # provider env var: the runtime calls it fine, so the UI must not
+        # ask for a key.
+        import framework.config as hive_config
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        llm = {"provider": "openai", "model": "local-qwen", "api_base": "http://127.0.0.1:9/v1", "api_key": "sk-in-config"}
+        monkeypatch.setattr(hive_config, "get_hive_config", lambda: {"llm": llm})
+        monkeypatch.setattr("framework.server.routes_config.get_hive_config", lambda: {"llm": llm})
+        app = create_app()
+        app["credential_store"] = MagicMock()
+        app["credential_store"].get.return_value = None
+
+        async with TestClient(TestServer(app)) as client:
+            data = await (await client.get("/api/config/llm")).json()
+
+        assert data["has_api_key"] is True
+
+
 class TestSSEFormat:
     """Tests for SSE event wire format -- events must be unnamed (data-only)
     so the frontend's es.onmessage handler receives them."""

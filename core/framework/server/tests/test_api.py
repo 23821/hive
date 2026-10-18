@@ -936,7 +936,6 @@ class TestConfigRoutes:
         assert subscriptions["codex"]["api_base"] == "https://chatgpt.com/backend-api/codex"
         assert subscriptions["kimi_code"]["default_model"] == "kimi-k2.6"
 
-
     @pytest.mark.asyncio
     async def test_a_key_written_in_the_config_counts_as_configured(self, monkeypatch):
         # A custom endpoint whose key lives in configuration.json, with no

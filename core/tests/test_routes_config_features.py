@@ -119,7 +119,8 @@ async def test_get_features_default(make_client) -> None:
     # default is what keeps the sender tools out of every queen's hands until
     # the user opts in. Adaptive budgets default ON. The memory timeline
     # defaults OFF: it costs background LLM calls for a small measured gain.
-    assert body == {"features": {"adaptive_tool_budget": True, "email_senders": False, "memory_timeline": False}}
+    # The stall check defaults OFF: it calls a judge after queen turns and needs the judge slot.
+    assert body == {"features": {"adaptive_tool_budget": True, "email_senders": False, "memory_timeline": False, "stall_check": False}}
 
 
 async def test_put_memory_timeline_persists(make_client, _isolated_config: Path) -> None:

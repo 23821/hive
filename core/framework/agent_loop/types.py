@@ -131,7 +131,7 @@ class AgentContext:
     - Execution metadata
     """
 
-    runtime: DecisionTracker
+    runtime: DecisionTracker | None  # None when nothing records decisions; the agent loop never reads it
 
     agent_id: str
     agent_spec: AgentSpec
@@ -219,6 +219,12 @@ class AgentContext:
     # related). Read by the past-conversations reminder source before each
     # user turn. Wired by the queen orchestrator; None elsewhere.
     past_conversation_recall_provider: Any = None
+
+    # Optional async Callable[[str], str | None]: the user's message in, what the
+    # installed turn-context packages want the queen to see before answering it
+    # out (framework.server.turn_context). Read by the turn-context reminder
+    # source. Wired by the queen orchestrator; None elsewhere.
+    turn_context_provider: Any = None
 
     # Optional Callable[[], ColonyBinding | None]: resolves the on-disk
     # colony this agent is bound to. Wired by the queen orchestrator from
@@ -355,6 +361,18 @@ class AgentResult:
                 value_str += "..."
             parts.append(f"  - {key}: {value_str}")
         return "\n".join(parts)
+
+
+@dataclass(frozen=True)
+class AgentReport:
+    """What an agent handed back when it called ``report_to_parent``.
+
+    ``data`` follows the spec's ``report_schema`` when it has one.
+    """
+
+    status: str  # success | partial | failed
+    summary: str
+    data: dict[str, Any] = field(default_factory=dict)
 
 
 class AgentProtocol(ABC):

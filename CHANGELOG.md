@@ -2,7 +2,49 @@
 
 > Full, detailed release notes live in [`docs/releases/`](docs/releases/). The entries below summarize the architecturally significant releases; older entries follow.
 
-## v1.0.0 — Colonies, Built-in Tools, and Measured Memory (unreleased)
+## v1.0.10 — Her Own Model
+
+**New:** a queen can run on a model of her own (`queen_llm`), set from her profile in the dashboard; her running chats switch at once. **Fixed:** `hive serve` stops within seconds instead of waiting on last reflections and open dashboard streams. See [docs/releases/v1.0.10.md](docs/releases/v1.0.10.md).
+
+## v1.0.9 — Ask the Judge
+
+**New:** `ChannelHost.judge`, so a channel can ask the judge (the `judge` slot, e.g. TypeSafe Jev) its own yes/no question, for example whether the queen should speak up in a group where nobody addressed her. **Changed:** the stall check asks the judge through the same code; its behavior is unchanged. See [docs/releases/v1.0.9.md](docs/releases/v1.0.9.md).
+
+## v1.0.8 — Turn Context
+
+**New:** turn context, so an installed package can show a queen something before each of her turns (the `hive.turn_context` entry point). **Fixed:** recall of past conversations reads Chinese instead of matching time stamps and sender headers; a failed model call that a gateway returns as a reply stays out of chat apps and the stall check. See [docs/releases/v1.0.8.md](docs/releases/v1.0.8.md).
+
+## v1.0.7 — Follow Through
+
+**New:** the stall check (Settings → Developer, off by default): a judge model catches a queen who announced an action and ended her turn without it, and reminds her once; the Judge slot for it under AI Model; the Runtime logs drawer shows the server's log. **Changed:** no first-run wizard; without a model, the chat links to the model settings. **Fixed:** a key saved in `configuration.json` is no longer asked for on every refresh. See [docs/releases/v1.0.7.md](docs/releases/v1.0.7.md).
+
+## v1.0.6 — Channels
+
+**New:** channels, so a chat app can talk to queens from inside `hive serve` (each chat is a queen session, and the queen's replies, questions and attached files flow back); `hive-cred`, so a script fetches a credential when it uses it. **Changed:** the `credentials` tool no longer reveals secrets into the conversation. **Fixed:** a message that reached a queen while she was starting no longer starts a second one. See [docs/releases/v1.0.6.md](docs/releases/v1.0.6.md).
+
+## v1.0.5 — Branch Anywhere
+
+**New:** branch a conversation at any message: from a queen reply, or by editing a message you sent in a new branch; conversations title themselves with the worker model, and you can rename them. **Fixed:** creating a queen no longer answers with an error. See [docs/releases/v1.0.5.md](docs/releases/v1.0.5.md).
+
+## v1.0.4 — Reasoning Remembered
+
+**Fixed:** Qwen, DeepSeek and GLM get their own `reasoning_content` back on the later steps of a turn, so a tool loop no longer loses its thread; saving a provider in an installed Hive no longer fails with `ModuleNotFoundError`. See [docs/releases/v1.0.4.md](docs/releases/v1.0.4.md).
+
+## v1.0.3 — The Right Version
+
+**Fixed:** the dashboard showed `v0.1.0` whatever Hive was installed; it now shows Hive's version, from `core/pyproject.toml`. **New:** `hive --version`. See [docs/releases/v1.0.3.md](docs/releases/v1.0.3.md).
+
+## v1.0.2 — The Whole App from PyPI
+
+**Highlights:** `pip install "aden-hive[tools]"` installs all of Hive: `aden-tools` now ships the terminal, memory and chart tools that only worked from a checkout, and `aden-hive` ships the dashboard. Run `hive open`. Projects built on Hive get a starter [AGENTS.md](templates/derivative/AGENTS.md) for their coding agents. See [docs/releases/v1.0.2.md](docs/releases/v1.0.2.md).
+
+## v1.0.1 — Build on Hive
+
+**Highlights:** projects can build on Hive's primitives: depend on `aden-hive` and `from hive import AgentLoop, LiteLLMProvider, EventBus, ...`, with each name imported when first used. `AgentLoop(on_report=...)` lets any agent hand back a structured report. Hive's built-in tools moved to the `tools` extra, so a dependent project installs 83 packages instead of 123.
+
+**Changed:** the packages are renamed `aden-hive` (was `framework`) and `aden-tools` (was `tools`); import names are unchanged. See [docs/releases/v1.0.1.md](docs/releases/v1.0.1.md).
+
+## v1.0.0 — Colonies, Built-in Tools, and Measured Memory
 
 **Highlights:** colonies rebuilt around execute-first: a queen does the work herself, then forks a **colony** that coordinates through a shared SQLite **tracker**, spawns worker clones with `run_worker`, and runs at scale with resumable **playbooks** and colony **skills**; **thirteen queens** (five new), and you choose who takes a job; Hive's own tools now **run in-process**, with no tool servers, plus your own Chrome through the `hive-browser` CLI; **bring-your-own-key** model setup with separate worker and vision models; **Sentinel** to keep colonies moving while you're away; a new dashboard; and Hive's first published **memory benchmark**: on [LongMemEval](docs/memory-benchmark.md), V1 answers 88.4% on S (up from 77.0%) and 82.0% on M, and we also report that the same model given the whole LongMemEval-S history scores 96.8%.
 

@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { LlmSection } from "./config";
 
 export interface PortraitDescriptor {
   cut?: string;
@@ -108,6 +109,13 @@ export type QueenToolsResetResult = QueenToolsResponse & {
   refreshed_sessions: number;
 };
 
+export type QueenLlm = {
+  queen_id: string;
+  section: LlmSection | null;
+  /** The main model she uses without a section of her own. */
+  default_model?: string;
+};
+
 export const queensApi = {
   /** List all queen profiles (id, name, title, portrait, has_avatar). */
   list: () =>
@@ -143,6 +151,16 @@ export const queensApi = {
   /** Get full profile for a queen. */
   getProfile: (queenId: string) =>
     api.get<QueenProfile>(`/queen/${queenId}/profile`),
+
+  /** The queen's own model (configuration.json `queen_llm`), or `section: null` when she
+   * uses the main model (AI Model → LLM). */
+  getLlm: (queenId: string) =>
+    api.get<QueenLlm>(`/queen/${queenId}/llm`),
+
+  /** Give the queen a model of her own (same shape and key check as the main slot), or
+   * `null` to return her to the main model. Her running sessions switch at once. */
+  setLlm: (queenId: string, section: LlmSection | null) =>
+    api.put<QueenLlm & { sessions_switched: number }>(`/queen/${queenId}/llm`, { section }),
 
   /** Update queen profile fields (partial update). */
   updateProfile: (queenId: string, updates: Partial<QueenProfile>) =>

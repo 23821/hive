@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import faulthandler
 import json
 import logging
 import os
@@ -26,6 +27,13 @@ import threading
 from pathlib import Path
 from typing import Any
 from urllib import error as urlerror, parse as urlparse, request as urlrequest
+
+# On stop: how long the sessions' last reflections may run, how long open connections get to
+# finish, and how long the process may linger after that. Together under a service manager's
+# usual wait (NSSM: 15 s after Ctrl+C).
+_SHUTDOWN_GRACE_S = 6.0
+_CONNECTION_CLOSE_S = 3.0
+_EXIT_WATCHDOG_S = 5.0
 
 # ---------------------------------------------------------------------------
 # Public registration
@@ -215,7 +223,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
             except Exception as e:  # noqa: BLE001
                 print(f"Error loading colony {colony_arg}: {e}")
 
-        runner = web.AppRunner(app, access_log=None)
+        # Dashboard event streams never end on their own: on shutdown, don't wait the default
+        # minute for them (a service manager kills the process long before).
+        runner = web.AppRunner(app, access_log=None, shutdown_timeout=_CONNECTION_CLOSE_S)
         await runner.setup()
         site = web.TCPSite(runner, args.host, args.port)
         await site.start()
@@ -272,7 +282,13 @@ def cmd_serve(args: argparse.Namespace) -> int:
                 except Exception:  # noqa: BLE001
                     pass
             await manager.shutdown_all()
+            # Stopping sessions starts a last reflection each; give them a short grace.
+            await manager.finish_background_tasks(_SHUTDOWN_GRACE_S)
             await runner.cleanup()
+            # Shutdown is done. If the process is still here a while later, something (a thread
+            # that never ends, a native library) is holding it: write every thread's stack to
+            # stderr, so the log shows what, and exit.
+            faulthandler.dump_traceback_later(_EXIT_WATCHDOG_S, exit=True)
 
     try:
         asyncio.run(run_server())
@@ -879,8 +895,10 @@ def _http_delete(url: str, timeout: float = 10.0) -> dict:
 
 
 def _frontend_dist_exists() -> bool:
-    candidates = [Path("frontend/dist"), Path("core/frontend/dist")]
-    return any((c / "index.html").exists() for c in candidates if c.is_dir())
+    # The same lookup the server serves from, so an installed package's dashboard counts too.
+    from framework.server.app import frontend_dist_dir
+
+    return frontend_dist_dir() is not None
 
 
 def _find_chrome_bin() -> str | None:

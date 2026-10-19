@@ -47,6 +47,23 @@ _STOPWORDS = frozenset(
 )
 _TOKEN_RE = re.compile(r"[a-z0-9]+(?:'[a-z]+)?")
 _FILE_RE = re.compile(r"^(\d{6})\.(user|assistant|tool)\.txt$")
+# Chinese and Japanese have no spaces: a run of these characters is cut into overlapping
+# two-character terms ("好累啊" -> "好累", "累啊").
+_CJK_RUN_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿豈-﫿]{2,}")
+# Two-character words too common to say what a message is about.
+_CJK_STOPWORDS = frozenset(
+    """
+    什么 怎么 为什么 我们 你们 他们 她们 这个 那个 这样 那样 这些 那些 就是 还是 但是 因为 所以 如果 可以 没有 不是 一下
+    一个 已经 现在 今天 时候 知道 觉得 真的 还有 然后 自己 的话 一样 有点 一点 东西 好的 是的 吧吧 了吗 的吗 了吧
+    """.split()
+)
+# The envelope around a message: the time the loop stamps on it ("[2026-10-17 22:47 Pacific
+# Daylight Time] "), and a sender a channel puts before it ("[name(id)]: "). They say who and
+# when, not what; when a sender header is present, only the text after the last one is used.
+_STAMP_RE = re.compile(r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}[^\]\n]*\]\s*")
+_SENDER_RE = re.compile(r"\[[^\[\]\n]{1,80}\]:\s*")
+# Numbers this long are ids (accounts, chats, requests), not topics.
+_ID_DIGITS = 5
 
 MAX_TERMS = 12
 TOP_K = 6
@@ -65,16 +82,30 @@ class RecalledTurn:
 
 
 def query_terms(text: str) -> list[str]:
-    """Content-word stems from *text*, matched later as word prefixes."""
+    """Content-word stems (matched later as word prefixes) and CJK two-character terms from *text*."""
+    text = _STAMP_RE.sub("", text)
+    senders = list(_SENDER_RE.finditer(text))
+    if senders:
+        text = text[senders[-1].end() :]
     terms: list[str] = []
     for token in _TOKEN_RE.findall(text.lower()):
         token = token.split("'")[0]
-        if token in _STOPWORDS or (len(token) < 3 and not token.isdigit()):
+        if token in _STOPWORDS or (len(token) < 3 and not token.isdigit()) or (token.isdigit() and len(token) >= _ID_DIGITS):
             continue
         stem = _stem(token)
         if stem not in terms:
             terms.append(stem)
+    for run in _CJK_RUN_RE.findall(text):
+        for i in range(len(run) - 1):
+            pair = run[i : i + 2]
+            if pair not in _CJK_STOPWORDS and pair not in terms:
+                terms.append(pair)
     return terms[:MAX_TERMS]
+
+
+def _term_pattern(term: str) -> str:
+    """Latin terms match at a word start; CJK terms anywhere, since CJK text has no word breaks."""
+    return re.escape(term) if _CJK_RUN_RE.fullmatch(term) else r"\b" + re.escape(term)
 
 
 def _stem(word: str) -> str:
@@ -136,7 +167,7 @@ def recall(
         return []
     sync_scope(scope, owner)
     root = P.events_index_dir(scope, owner)
-    pattern = r"\b(?:" + "|".join(terms) + ")"
+    pattern = "(?:" + "|".join(_term_pattern(t) for t in terms) + ")"
     files = _candidate_files(root, pattern)
     if not files:
         return []
@@ -145,7 +176,7 @@ def recall(
     for f in files:
         if f.parent.name != exclude_session:
             by_session.setdefault(f.parent.name, set()).add(f)
-    term_res = [re.compile(r"\b" + t, re.IGNORECASE) for t in terms]
+    term_res = [re.compile(_term_pattern(t), re.IGNORECASE) for t in terms]
 
     docs: list[tuple[str, int, str, str, list[int]]] = []
     total_turns = 0
@@ -195,7 +226,7 @@ def _snippet(text: str, terms: list[str], limit: int) -> str:
     text = " ".join(text.split())
     if len(text) <= limit:
         return text
-    hits = [m.start() for t in terms if (m := re.search(r"\b" + t, text, re.IGNORECASE))]
+    hits = [m.start() for t in terms if (m := re.search(_term_pattern(t), text, re.IGNORECASE))]
     center = min(hits) if hits else 0
     start = max(0, min(center - limit // 3, len(text) - limit))
     return ("…" if start else "") + text[start : start + limit].strip() + ("…" if start + limit < len(text) else "")

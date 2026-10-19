@@ -127,6 +127,12 @@ class Message:
     # is missing them. None for non-reasoning models and non-assistant
     # roles.
     thinking_blocks: list[dict[str, Any]] | None = None
+    # Reasoning the model streamed on this assistant turn as the
+    # OpenAI-compatible ``reasoning_content`` string (Qwen, DeepSeek, GLM).
+    # Sent back on the turn's later steps (``to_llm_messages`` keeps it only
+    # after the last user message): these models' chat templates render it,
+    # and without it every earlier step of the turn reads as unthought.
+    reasoning_content: str | None = None
     # Optional chip-renderable attachments to surface on this message in
     # the UI. Same shape user messages use for their uploaded files — a
     # list of ``{"type": "image_url", "image_url": {"url": "hive-attachment://..."}, "filename": "..."}`` entries.
@@ -169,6 +175,8 @@ class Message:
             # models — see Message.thinking_blocks.
             if self.thinking_blocks:
                 d["thinking_blocks"] = self.thinking_blocks
+            if self.reasoning_content:
+                d["reasoning_content"] = self.reasoning_content
             return d
 
         # role == "tool"
@@ -221,6 +229,8 @@ class Message:
             d["is_trigger"] = self.is_trigger
         if self.thinking_blocks is not None:
             d["thinking_blocks"] = self.thinking_blocks
+        if self.reasoning_content is not None:
+            d["reasoning_content"] = self.reasoning_content
         if self.images is not None:
             d["images"] = self.images
         if self.spillover_path is not None:
@@ -247,6 +257,7 @@ class Message:
             inherited_from=data.get("inherited_from"),
             is_trigger=data.get("is_trigger", False),
             thinking_blocks=data.get("thinking_blocks"),
+            reasoning_content=data.get("reasoning_content"),
             images=data.get("images"),
             spillover_path=data.get("spillover_path"),
         )
@@ -645,6 +656,7 @@ class NodeConversation:
         *,
         truncated: bool = False,
         thinking_blocks: list[dict[str, Any]] | None = None,
+        reasoning_content: str | None = None,
     ) -> Message:
         # Collect any chip attachments published by attach_file during
         # the run of tools that fed into this assistant turn. We walk
@@ -660,6 +672,7 @@ class NodeConversation:
             run_id=self._run_id,
             truncated=truncated,
             thinking_blocks=thinking_blocks or None,
+            reasoning_content=reasoning_content or None,
             images=images or None,
         )
         self._messages.append(msg)
@@ -900,11 +913,25 @@ class NodeConversation:
         (``_hoist_tool_result_images``). Omitting *model* keeps the
         images where they are — pass it whenever the provider is known.
         """
-        msgs = [m.to_llm_dict() for m in self._messages]
+        msgs = self._reasoning_for_this_turn([m.to_llm_dict() for m in self._messages])
         msgs = self._repair_orphaned_tool_calls(msgs)
         if not supports_images_in_tool_results(model or ""):
             msgs = self._hoist_tool_result_images(msgs)
         msgs = self._sanitize_for_api(msgs)
+        return msgs
+
+    @staticmethod
+    def _reasoning_for_this_turn(msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Keep ``reasoning_content`` only on the steps after the last user message.
+
+        That is the scope Qwen's chat template renders (and DeepSeek reads in a
+        tool loop); the reasoning of earlier turns is dropped there anyway, so
+        it is not sent. Signed ``thinking_blocks`` are untouched: Anthropic
+        wants every one of them back.
+        """
+        last_user = max((i for i, m in enumerate(msgs) if m.get("role") == "user"), default=-1)
+        for m in msgs[:last_user]:
+            m.pop("reasoning_content", None)
         return msgs
 
     @staticmethod

@@ -489,7 +489,8 @@ def get_worker_llm_extra_kwargs() -> dict[str, Any]:
             }
     if worker_llm.get("provider") == "ollama":
         return {"num_ctx": worker_llm.get("num_ctx", 16384)}
-    return {}
+    extra_body = section_extra_body(worker_llm)
+    return {"extra_body": extra_body} if extra_body else {}
 
 
 DEFAULT_MAX_CONTEXT_TOKENS = 32_000
@@ -583,6 +584,84 @@ def get_max_context_tokens(fallback: int = DEFAULT_MAX_CONTEXT_TOKENS) -> int:
     if catalog is not None:
         return catalog[1]
     return fallback
+
+
+# ---------------------------------------------------------------------------
+# A queen's own model: configuration.json "queen_llm": {"<queen_id>": <section>}
+# ---------------------------------------------------------------------------
+
+
+def get_queen_llm_section(queen_id: str | None) -> dict[str, Any] | None:
+    """The queen's own model section under ``queen_llm``, in the ``llm`` slot's shape.
+
+    ``None`` when she has none (or it lacks a provider and model): she uses the ``llm`` slot.
+    """
+    if not queen_id:
+        return None
+    sections = get_hive_config().get("queen_llm")
+    if not isinstance(sections, dict):
+        return None
+    section = sections.get(queen_id)
+    if not isinstance(section, dict) or not section.get("provider") or not str(section.get("model") or "").strip():
+        return None
+    return section
+
+
+def section_model(section: dict[str, Any]) -> str:
+    """``provider/model`` for a model section, as LiteLLM takes it."""
+    provider = str(section["provider"])
+    model = str(section["model"]).strip()
+    if provider.lower() == "openrouter" and model.lower().startswith("openrouter/"):
+        model = model[len("openrouter/") :]
+    return f"{provider}/{model}"
+
+
+def section_extra_body(section: dict[str, Any]) -> dict[str, Any] | None:
+    """A model section's ``extra_body``: fields sent as they are in every request body, such as
+    a provider's thinking switch or ``reasoning_effort``."""
+    extra_body = section.get("extra_body")
+    return dict(extra_body) if isinstance(extra_body, dict) and extra_body else None
+
+
+def get_queen_api_key(queen_id: str | None) -> str | None:
+    """The key for the queen's model: her section's literal key, the credential store for its
+    provider, its ``api_key_env_var``, then the main key. Without her own section, the main key."""
+    section = get_queen_llm_section(queen_id)
+    if section is None:
+        return get_api_key()
+    if section.get("api_key"):
+        return section["api_key"]
+    cred_key = _get_api_key_from_credential_store(section.get("provider", ""))
+    if cred_key:
+        return cred_key
+    env_var = section.get("api_key_env_var")
+    if env_var and os.environ.get(env_var):
+        return os.environ[env_var]
+    return get_api_key()
+
+
+def get_queen_api_base(queen_id: str | None) -> str | None:
+    """The endpoint for the queen's model; without her own section, the main one."""
+    section = get_queen_llm_section(queen_id)
+    if section is None:
+        return get_api_base()
+    if section.get("api_base"):
+        return section["api_base"]
+    if str(section.get("provider", "")).lower() == "openrouter":
+        return OPENROUTER_API_BASE
+    return None
+
+
+def get_queen_max_context_tokens(queen_id: str | None, fallback: int = DEFAULT_MAX_CONTEXT_TOKENS) -> int:
+    """The context window to budget the queen's loop by: her section's ``max_context_tokens``,
+    else her model's catalog entry, else :func:`get_max_context_tokens`."""
+    section = get_queen_llm_section(queen_id)
+    if section is None:
+        return get_max_context_tokens(fallback)
+    if "max_context_tokens" in section:
+        return section["max_context_tokens"]
+    catalog = _catalog_limits_for(section)
+    return catalog[1] if catalog is not None else fallback
 
 
 def get_aux_max_tokens() -> int:
@@ -891,6 +970,54 @@ def get_email_senders_enabled() -> bool:
     return False
 
 
+def get_stall_check_enabled() -> bool:
+    """Return whether a judge checks queen turns that announce work and stop.
+
+    See ``framework.server.stall_check``; it also needs the ``judge`` slot.
+    Resolution: ``HIVE_STALL_CHECK`` env var when set, else the top-level
+    ``stall_check`` boolean in configuration.json (the features endpoint
+    writes it). Default: off.
+    """
+    raw = os.environ.get("HIVE_STALL_CHECK")
+    if raw is not None and raw.strip() != "":
+        return raw.strip().lower() not in ("0", "false", "no", "off")
+    return bool(get_hive_config().get("stall_check", False))
+
+
+@dataclass(frozen=True)
+class MemoryReflectionConfig:
+    """How often a queen's memory reflection runs, and on which model.
+
+    configuration.json: ``"memory_reflection": {"every_turns": 6, "long_every": 4, "model": "main"}``.
+    """
+
+    #: Reflect after every this many of her answered turns in a session.
+    every_turns: int = 6
+    #: Every this many reflections, also consolidate the memory files (a long reflection).
+    long_every: int = 4
+    #: "main" (the session's model) or "worker" (the worker_llm slot, when set).
+    model: str = "main"
+
+
+def get_memory_reflection_config() -> MemoryReflectionConfig:
+    """The ``memory_reflection`` section, with defaults for anything missing or invalid."""
+    raw = get_hive_config().get("memory_reflection")
+    raw = raw if isinstance(raw, dict) else {}
+    default = MemoryReflectionConfig()
+
+    def positive(key: str, fallback: int) -> int:
+        value = raw.get(key, fallback)
+        is_count = isinstance(value, int) and not isinstance(value, bool)
+        return value if is_count and value >= 1 else fallback
+
+    model = raw.get("model", default.model)
+    return MemoryReflectionConfig(
+        every_turns=positive("every_turns", default.every_turns),
+        long_every=positive("long_every", default.long_every),
+        model=model if model in ("main", "worker") else default.model,
+    )
+
+
 def get_memory_timeline_enabled() -> bool:
     """Return whether queens keep a dated timeline of what the user mentions.
 
@@ -1010,10 +1137,8 @@ def get_llm_extra_kwargs() -> dict[str, Any]:
     # a model's default thinking). Applied to every LLM call, including the
     # small recall/judge aux calls that otherwise burn their token budget on
     # hidden reasoning and return empty.
-    extra_body = llm.get("extra_body")
-    if isinstance(extra_body, dict) and extra_body:
-        return {"extra_body": extra_body}
-    return {}
+    extra_body = section_extra_body(llm)
+    return {"extra_body": extra_body} if extra_body else {}
 
 
 # ---------------------------------------------------------------------------

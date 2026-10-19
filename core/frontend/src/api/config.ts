@@ -73,11 +73,13 @@ export interface FeaturesConfig {
    * from the agent, not just from the UI. See useEmailSendersEnabled.
    */
   email_senders: boolean;
+  /** A judge model reminds a queen who announced work and stopped (needs the judge slot). */
+  stall_check: boolean;
 }
 
 /** One provider slot in configuration.json (llm / worker_llm /
  * vision_fallback) — displayed and saved verbatim, unknown keys included. */
-export type LlmRole = "llm" | "worker_llm" | "vision_fallback";
+export type LlmRole = "llm" | "worker_llm" | "vision_fallback" | "judge";
 export interface LlmSection {
   provider?: string;
   model?: string;

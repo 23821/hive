@@ -46,11 +46,13 @@ def _configure_paths() -> None:
 
 def main() -> None:
     _configure_paths()
+    from hive import __version__
 
     parser = argparse.ArgumentParser(
         prog="hive",
         description="Aden Hive — Queens, colonies, and live agent sessions",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
         "--model",
         default="claude-haiku-4-5-20251001",

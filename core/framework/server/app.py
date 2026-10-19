@@ -11,6 +11,7 @@ from pathlib import Path
 from aiohttp import web
 from aiohttp.client_exceptions import ClientConnectionResetError
 
+from framework.server.routes_logs import PATH as RUNTIME_LOGS_PATH
 from framework.server.session_manager import Session, SessionManager
 
 logger = logging.getLogger(__name__)
@@ -311,10 +312,15 @@ async def access_log_middleware(request: web.Request, handler):
     event-loop-stalling work) are logged at WARNING so they stand out.
     """
     started = time.monotonic()
+    # The Runtime logs drawer polls every few seconds; logging each poll would
+    # fill the very log it shows.
+    quiet = request.path == RUNTIME_LOGS_PATH
 
     def _line(status: int) -> None:
         elapsed = time.monotonic() - started
         slow = elapsed > 1.0
+        if quiet and status < 400 and not slow:
+            return
         logger.log(
             logging.WARNING if (status >= 400 or slow) else logging.INFO,
             "[access] %s %s -> %d (%.0fms)%s",
@@ -1068,6 +1074,7 @@ def create_app(model: str | None = None) -> web.Application:
     from framework.server.routes_credentials import register_routes as register_credential_routes
     from framework.server.routes_events import register_routes as register_event_routes
     from framework.server.routes_execution import register_routes as register_execution_routes
+    from framework.server.routes_logs import register_routes as register_log_routes
     from framework.server.routes_maintenance import register_routes as register_maintenance_routes
     from framework.server.routes_mcp import register_routes as register_mcp_routes
     from framework.server.routes_memories import register_routes as register_memory_routes
@@ -1093,12 +1100,20 @@ def create_app(model: str | None = None) -> web.Application:
     register_colonies_routes(app)
     register_colony_tools_routes(app)
     register_sentinel_routes(app)
+
+    from framework.server.channels import register as register_channels
+
+    register_channels(app)
+    from framework.server.turn_context import register as register_turn_context
+
+    register_turn_context(app)
     register_mcp_routes(app)
     register_colony_worker_routes(app)
     register_memory_routes(app)
     register_prompt_routes(app)
     register_skills_routes(app)
     register_task_routes(app)
+    register_log_routes(app)
     # Manual-trigger data-retention janitor (no background scheduler).
     # started_at lets tier 1 skip log files the live process holds open;
     # the server marker lets an offline CLI janitor detect that a live
@@ -1142,22 +1157,28 @@ def create_app(model: str | None = None) -> web.Application:
     return app
 
 
-def _setup_static_serving(app: web.Application) -> None:
-    """Serve frontend static files if the dist directory exists."""
-    # Try: CWD/frontend/dist, core/frontend/dist, repo_root/frontend/dist
+def frontend_dist_dir() -> Path | None:
+    """The built dashboard, if there is one.
+
+    A checkout serves ``core/frontend/dist`` (built by the quickstart); an installed
+    package serves the copy its wheel ships in ``framework/server/frontend``.
+    """
     _here = Path(__file__).resolve().parent  # core/framework/server/
     candidates = [
         Path("frontend/dist"),
         _here.parent.parent / "frontend" / "dist",  # core/frontend/dist
         _here.parent.parent.parent / "frontend" / "dist",  # repo_root/frontend/dist
+        _here / "frontend",  # the wheel's copy
     ]
-
-    dist_dir: Path | None = None
     for candidate in candidates:
         if candidate.is_dir() and (candidate / "index.html").exists():
-            dist_dir = candidate.resolve()
-            break
+            return candidate.resolve()
+    return None
 
+
+def _setup_static_serving(app: web.Application) -> None:
+    """Serve frontend static files if the dist directory exists."""
+    dist_dir = frontend_dist_dir()
     if dist_dir is None:
         logger.debug("No frontend/dist found — skipping static file serving")
         return

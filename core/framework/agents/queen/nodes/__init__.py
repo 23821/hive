@@ -286,6 +286,19 @@ Tool schemas carry syntax — read them before invoking. The canonical \
 use sequence for fan-out work is the Delegation loop below. \
 ``set_trigger`` / ``list_triggers`` / ``remove_trigger`` are for \
 recurring runs of THIS colony only — not one-shot follow-ups.
+
+## Credentials (hive-cred CLI) — run via terminal_exec
+
+Tools that take `account=<alias>` resolve credentials themselves; prefer them. When a script must call a \
+provider API directly, it fetches the value at request time — never from a file or a pasted constant:
+
+- `hive-cred browse [query] --json` — what is connected (aliases, identities) and what could be
+- `hive-cred inspect <id> --account <alias> --json` — one credential's accounts, key names, type (no values)
+- `TOK=$(hive-cred token <id> --account <alias>)` — a FRESH value; OAuth tokens are refreshed on every call \
+and last ~1h, so call it right before each request. `--json` adds `expires_at`. Exit 4 = not found · \
+1 with `reauth_required` = the user must reconnect it; do not retry.
+
+Adding a credential is the `credentials` tool (action=collect): it shows the user a secure form and the value is never shown to you.
 """
 
 

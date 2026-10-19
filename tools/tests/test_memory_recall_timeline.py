@@ -45,6 +45,33 @@ def test_query_terms_drop_scaffolding_and_stem() -> None:
     assert R.query_terms("thanks!") == []
 
 
+def test_query_terms_skip_the_envelope_and_cut_chinese_into_pairs() -> None:
+    stamped = "[2026-10-17 22:47 Pacific Daylight Time] [Ann(10001)]: 睡了吗"
+    group = "[群里最近的对话]\nCy(10002): 你好\n\n[Ann(10001)]: RTX 4090用着顺手吗"
+
+    assert R.query_terms(stamped) == ["睡了"]
+    assert R.query_terms(group) == ["rtx", "4090", "用着", "着顺", "顺手", "手吗"]
+    assert R.query_terms("好累啊") == ["好累", "累啊"]
+
+
+def test_recall_matches_chinese_by_content_not_by_the_senders_header(hive_home: Path) -> None:
+    header = "[2026-07-10 23:14 Pacific Daylight Time] [Ann(10001)]: "
+    _session(
+        hive_home,
+        "session_20260710_231400_cccc0001",
+        [("user", header + "我的显卡是4090，跑不动大模型"), ("assistant", "那就先用小一点的模型吧。")],
+    )
+    _session(
+        hive_home,
+        "session_20260712_101500_cccc0002",
+        [("user", header + "今天画了一只狐狸"), ("assistant", "好可爱的狐狸！")],
+    )
+
+    turns = R.recall("queens", QUEEN, "[2026-10-17 22:55 Pacific Daylight Time] [Ann(10001)]: 你还记得我的显卡吗")
+
+    assert [t.session for t in turns] == ["session_20260710_231400_cccc0001"]
+
+
 def test_recall_finds_the_turn_that_answers(hive_home: Path) -> None:
     _session(
         hive_home,

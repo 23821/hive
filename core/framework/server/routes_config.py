@@ -317,7 +317,12 @@ def _hot_swap_sessions(request: web.Request, full_model: str, api_key: str | Non
             return True
         return False
 
+    from framework.server import queen_models
+
     for session in manager.list_sessions():
+        # A queen with a model of her own (queen_llm) keeps it when the main model changes.
+        if queen_models.has_own(getattr(session, "queen_name", None)):
+            continue
         if _reconfigure_if_possible(getattr(session, "llm", None)):
             swapped += 1
         # ColonyRuntime holds its own worker LLM; expose attribute may be
@@ -341,48 +346,11 @@ async def _validate_provider_key(
 
     Runs the check in a thread pool to avoid blocking the event loop.
     """
-    from scripts.check_llm_key import (
-        PROVIDERS as CHECK_PROVIDERS,
-        check_anthropic_compatible,
-        check_minimax,
-        check_openai_compatible,
-        check_openrouter,
-        check_openrouter_model,
-    )
+    from framework.llm.key_check import check_key
 
     def _check() -> dict:
-        pid = provider.lower()
         try:
-            # Subscription providers with custom api_base
-            if pid == "openrouter" and model:
-                return check_openrouter_model(api_key, model=model, api_base=api_base or "https://openrouter.ai/api/v1")
-            if api_base and pid == "minimax":
-                return check_minimax(api_key, api_base)
-            if api_base and pid == "openrouter":
-                return check_openrouter(api_key, api_base)
-            if api_base and pid == "kimi":
-                return check_anthropic_compatible(
-                    api_key,
-                    api_base.rstrip("/") + "/v1/messages",
-                    "Kimi",
-                    model=model or "kimi-k2.6",
-                )
-            if api_base and pid == "hive":
-                return check_anthropic_compatible(
-                    api_key,
-                    api_base.rstrip("/") + "/v1/messages",
-                    "Hive",
-                    model=model or "queen",
-                    bearer_auth=True,
-                )
-            if api_base:
-                endpoint = api_base.rstrip("/") + "/models"
-                name = {"zai": "ZAI"}.get(pid, "Custom provider")
-                return check_openai_compatible(api_key, endpoint, name)
-            if pid in CHECK_PROVIDERS:
-                return CHECK_PROVIDERS[pid](api_key)
-            # No check available — assume valid
-            return {"valid": True, "message": f"No health check for {pid}"}
+            return check_key(provider.lower(), api_key, api_base=api_base, model=model)
         except Exception as exc:
             return {"valid": None, "message": f"Validation error: {exc}"}
 
@@ -401,8 +369,12 @@ async def handle_get_llm_config(request: web.Request) -> web.Response:
     provider = llm.get("provider", "")
     model = llm.get("model", "")
 
-    # Check if an API key is available for the current provider
-    has_key = _resolve_api_key(provider, request) is not None
+    # Whether the runtime can call the active model: the key it would actually use
+    # (configuration.json's own llm.api_key, a key pool, a subscription token,
+    # the credential store or the env var), not only the provider's default env var.
+    from framework.config import get_api_key
+
+    has_key = bool(get_api_key()) or _resolve_api_key(provider, request) is not None
 
     # Check ALL providers for key availability (env vars + credential store)
     connected = []
@@ -882,7 +854,7 @@ async def handle_update_sentinel_config(request: web.Request) -> web.Response:
 # Whitelisted top-level boolean keys in configuration.json that the
 # features endpoint may read/write. Keep this in sync with the getters
 # in framework.config (e.g. get_adaptive_tool_budget_enabled).
-_FEATURE_KEYS = ("adaptive_tool_budget", "email_senders", "memory_timeline")
+_FEATURE_KEYS = ("adaptive_tool_budget", "email_senders", "memory_timeline", "stall_check")
 
 
 def _apply_adaptive_budget_flag(request: web.Request, enabled: bool) -> int:
@@ -929,6 +901,7 @@ async def handle_get_features(request: web.Request) -> web.Response:
         get_adaptive_tool_budget_enabled,
         get_email_senders_enabled,
         get_memory_timeline_enabled,
+        get_stall_check_enabled,
     )
 
     return web.json_response(
@@ -937,6 +910,7 @@ async def handle_get_features(request: web.Request) -> web.Response:
                 "adaptive_tool_budget": get_adaptive_tool_budget_enabled(),
                 "email_senders": get_email_senders_enabled(),
                 "memory_timeline": get_memory_timeline_enabled(),
+                "stall_check": get_stall_check_enabled(),
             }
         }
     )
@@ -1140,7 +1114,8 @@ async def handle_update_rate_limits(request: web.Request) -> web.Response:
 # as typed. Absolute accuracy by construction.
 # ---------------------------------------------------------------------------
 
-_ROLE_SECTIONS = ("llm", "worker_llm", "vision_fallback")
+# "judge" holds the stall check's judge (framework.server.stall_check); it is not a chat model.
+_ROLE_SECTIONS = ("llm", "worker_llm", "vision_fallback", "judge")
 
 
 async def handle_get_llm_sections(request: web.Request) -> web.Response:
@@ -1167,7 +1142,8 @@ async def _write_role_section(request: web.Request, role: str, section: dict, va
         if env_var:
             api_key = os.environ.get(str(env_var), "")
 
-    if validate and api_key and api_base:
+    # A judge isn't a chat model, so the chat key check doesn't apply; it is tried when it judges.
+    if validate and api_key and api_base and role != "judge":
         check = await _validate_provider_key(provider, api_key, api_base=api_base, model=str(section["model"]))
         if check.get("valid") is False:
             return web.json_response(
@@ -1211,7 +1187,7 @@ async def handle_put_llm_section(request: web.Request) -> web.Response:
     role = str(body.get("role") or "")
     if role not in _ROLE_SECTIONS:
         return web.json_response(
-            {"error": "'role' must be llm | worker_llm | vision_fallback"},
+            {"error": "'role' must be llm | worker_llm | vision_fallback | judge"},
             status=400,
         )
     section = body.get("section", None)
@@ -1318,7 +1294,7 @@ async def handle_apply_provider_library(request: web.Request) -> web.Response:
     role = str(body.get("role") or "")
     if role not in _ROLE_SECTIONS:
         return web.json_response(
-            {"error": "'role' must be llm | worker_llm | vision_fallback"},
+            {"error": "'role' must be llm | worker_llm | vision_fallback | judge"},
             status=400,
         )
     name = str(body.get("name") or "").strip()

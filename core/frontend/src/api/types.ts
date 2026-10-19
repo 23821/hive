@@ -49,6 +49,10 @@ export interface HistorySession {
   queen_id?: string | null;
   last_message?: string | null;
   message_count?: number;
+  /** Set automatically after the first turn, or by the user. */
+  title?: string | null;
+  /** The session this one was forked from. */
+  forked_from?: string | null;
 }
 
 export interface EntryPoint {
@@ -306,6 +310,7 @@ export type EventTypeName =
   | "tools_config_changed"
   | "crm_changed"
   | "session_forked"
+  | "session_title_updated"
   // Stream-health & nudge observability (see core EventType).
   | "stream_ttft_exceeded"
   | "stream_inactive"

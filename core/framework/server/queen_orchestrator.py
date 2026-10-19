@@ -532,12 +532,19 @@ async def create_queen(
     from framework.llm.capabilities import supports_image_tool_results
     from framework.loader.mcp_registry import MCPRegistry
     from framework.loader.tool_registry import ToolRegistry
-    from framework.server import boot_status
+
+    # A queen with a model of her own (queen_llm) runs on it. Nothing holds session.llm yet, so
+    # it is replaced outright; a queen picked later is switched in place (queen_models.apply).
+    from framework.server import boot_status, queen_models
     from framework.tools.queen_lifecycle_tools import (
         QueenPhaseState,
         normalize_legacy_phase,
         register_queen_lifecycle_tools,
     )
+
+    if queen_models.has_own(session.queen_name):
+        session.llm = queen_models.build(session.queen_name)
+        logger.info("Queen %s uses her own model %s", session.queen_name, getattr(session.llm, "model", "?"))
 
     # ---- Tool registry ------------------------------------------------
     # Use pre-loaded cached registry if available (fast path)
@@ -668,6 +675,8 @@ async def create_queen(
             # create, and a resume passes no body at all.
             if _persisted.get("crm_setup"):
                 session.crm_setup = True
+            if isinstance(_persisted.get("channel"), str):
+                session.channel = _persisted["channel"]
         except (json.JSONDecodeError, OSError):
             persisted_phase = None
     bound_to_colony = bool(session.colony_id or session.binding or session.worker_path)
@@ -688,7 +697,7 @@ async def create_queen(
     # ---- Ambient credentials provider --------------------------------
     # Renders the "Connected integrations" block injected into every Queen
     # phase prompt so the Queen always knows which credentials are connected
-    # without having to call list_credentials. Cached briefly to keep the
+    # without having to run `hive-cred browse`. Cached briefly to keep the
     # per-iteration prompt rebuild cheap; invalidated by routes_credentials
     # when the user adds/removes an integration.
     phase_state.credentials_prompt_provider = _build_credentials_provider(session.id)
@@ -1342,7 +1351,8 @@ async def create_queen(
         # queen in the UI), use that identity instead of LLM auto-selection.
         # Also skip LLM auto-selection if queen was already selected during
         # session creation (e.g., from home screen classification).
-        if session.queen_name and session.queen_name != "default":
+        preselected = bool(session.queen_name and session.queen_name != "default")
+        if preselected:
             queen_id = session.queen_name
             logger.info("Using pre-selected queen: %s", queen_id)
         else:
@@ -1363,6 +1373,9 @@ async def create_queen(
         phase_state.queen_identity_prompt = identity_prompt
         # Route session storage to ~/.hive/agents/queens/{queen_id}/sessions/
         session.queen_name = queen_id
+        # Picked just now: if she has a model of her own, her running loop switches to it.
+        if not preselected and queen_models.has_own(queen_id):
+            queen_models.apply(session.llm, queen_id, default_model=getattr(session_manager, "_model", None))
 
         # Relocate session dir from default/ to the selected queen's dir
         # so all writes (conversations, events) go to the correct queen.
@@ -1573,8 +1586,8 @@ async def create_queen(
             _iter_cap = _os.environ.get("HIVE_MAX_ITER")
             _default_max_iter = int(_iter_cap) if (_iter_cap and _iter_cap.isdigit()) else 999_999
             from framework.config import (
-                get_max_context_tokens as _get_max_ctx,
                 get_max_tool_result_chars as _get_max_trc,
+                get_queen_max_context_tokens as _get_queen_max_ctx,
             )
 
             queen_loop_config = LoopConfig(
@@ -1584,7 +1597,7 @@ async def create_queen(
                 # Config/catalog first (llm.max_context_tokens, model window),
                 # then the queen profile's legacy literal — a 32k local model
                 # must not run with a 180k compaction budget.
-                max_context_tokens=_get_max_ctx(fallback=lc.get("max_context_tokens", 180_000)),
+                max_context_tokens=_get_queen_max_ctx(session.queen_name, fallback=lc.get("max_context_tokens", 180_000)),
                 max_tool_result_chars=_get_max_trc(fallback=lc.get("max_tool_result_chars", 30_000)),
                 spillover_dir=str(queen_dir / "data"),
                 hooks=lc.get("hooks", {}),
@@ -1599,6 +1612,7 @@ async def create_queen(
                 conversation_store=conversation_store,
             )
 
+            from framework.server.turn_context import for_session as turn_context_for_session
             from framework.tracker.decision_tracker import DecisionTracker
 
             queen_spec = AgentSpec(
@@ -1671,6 +1685,10 @@ async def create_queen(
                 # Same scope search_messages uses; the live session is
                 # excluded (it's already in context).
                 past_conversation_recall_provider=lambda text: _recall_past_conversations(session, text, queen_dir.name),
+                # Whatever installed turn-context packages (e.g. voice
+                # examples) want her to see before she answers; nothing
+                # when none is installed and enabled.
+                turn_context_provider=turn_context_for_session(session),
                 # Resolves the on-disk colony binding for tool-budget
                 # checkpoint reminders (tracker + fleet snapshots).
                 # Returns None for an independent-mode queen (no colony
@@ -1877,10 +1895,12 @@ async def create_queen(
 
             from framework.agents.queen.reflection_agent import subscribe_reflection_triggers
 
+            # Memory work runs on the worker model when memory_reflection.model says so.
+            _memory_llm = session_manager.memory_llm(session) if session_manager is not None else session.llm
             _reflection_subs = await subscribe_reflection_triggers(
                 session.event_bus,
                 queen_dir,
-                session.llm,
+                _memory_llm,
                 global_memory_dir=global_dir,
                 queen_memory_dir=queen_mem_dir,
                 queen_id=session.queen_name,
@@ -1890,7 +1910,20 @@ async def create_queen(
             # few recent earlier sessions that predate it.
             from framework.agents.queen.timeline import subscribe_timeline_triggers
 
-            _reflection_subs += await subscribe_timeline_triggers(session.event_bus, queen_dir, session.llm)
+            _reflection_subs += await subscribe_timeline_triggers(session.event_bus, queen_dir, _memory_llm)
+            # Session title, written by the worker model after the first turn.
+            from framework.server.session_titles import subscribe_title_trigger
+
+            _title_llm = (session_manager.build_worker_llm() if session_manager is not None else None) or session.llm
+            _reflection_subs += subscribe_title_trigger(session.event_bus, queen_dir, _title_llm)
+            # Developer option: a judge catches turns that announce work and stop.
+            from framework.server.stall_check import subscribe_stall_check
+
+            def _queen_node():
+                executor = session.queen_executor
+                return executor.node_registry.get("queen") if executor is not None else None
+
+            _reflection_subs += subscribe_stall_check(session.event_bus, _queen_node)
             session.memory_reflection_subs = _reflection_subs
 
             # Set initial user message based on mode:

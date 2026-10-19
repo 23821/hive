@@ -6,12 +6,15 @@ import { tasksApi, type TaskRecord } from "@/api/tasks";
 import ChatPanel, {
   type ChatMessage,
   type ImageContent,
+  stripSystemReminders,
+  userInputTimestamp,
 } from "@/components/ChatPanel";
 import QueenSessionSwitcher from "@/components/QueenSessionSwitcher";
 import { api } from "@/api/client";
 import { configApi } from "@/api/config";
 import { executionApi } from "@/api/execution";
 import { sessionsApi } from "@/api/sessions";
+import { resolveAttachmentUrl } from "@/lib/attachments";
 import { queensApi, type PortraitDescriptor } from "@/api/queens";
 import AgentCredentialForm from "@/components/AgentCredentialForm";
 import type { AgentCredentialFormRequest } from "@/api/credentials";
@@ -113,6 +116,9 @@ export default function QueenDM() {
   // composer, because auto-send waits for `loading` to clear and the token was
   // gone by then.
   const handoffSessionRef = useRef<string | null>(null);
+  // The edited message an "Edit in a new branch" carries into the session it
+  // forked, put in the composer (text and files) once that session loads.
+  const branchDraftRef = useRef<{ sessionId: string; text: string; files: File[] } | null>(null);
   const profileQueen = queenProfiles.find((q) => q.id === queenId);
   const colonyQueen = queens.find((q) => q.id === queenId);
   const queenInfo = getQueenForAgent(queenId || "");
@@ -275,6 +281,7 @@ export default function QueenDM() {
   // into) and handed here to be sent through the real composer. See
   // lib/composerHandoff.
   const [handoff, setHandoff] = useState<ComposerHandoff | null>(null);
+  const [branchFiles, setBranchFiles] = useState<File[] | null>(null);
   const [actionPlanOpen, setActionPlanOpen] = useState(false);
   const [expandedHistoryDays, setExpandedHistoryDays] = useState<Set<string>>(new Set());
   // Sessions whose inline content is currently expanded under the history
@@ -996,6 +1003,13 @@ export default function QueenDM() {
     log("resetViewState + setLoading(true)");
     resetViewState();
     setLoading(true);
+    if (selectedSessionParam && branchDraftRef.current?.sessionId === selectedSessionParam) {
+      setInitialDraft(branchDraftRef.current.text);
+      setBranchFiles(branchDraftRef.current.files.length ? branchDraftRef.current.files : null);
+      branchDraftRef.current = null;
+    } else {
+      setBranchFiles(null);
+    }
     // Any handoff belongs to the session load that claimed it. Dropping it here
     // means switching sessions can't hand a stale draft to a remounted composer
     // and send it a second time; the branch below re-sets it when this load is
@@ -1437,6 +1451,73 @@ export default function QueenDM() {
     }
   }, [sessionId, compactingAndForking, queenId, setSearchParams]);
 
+  // Fork this conversation into a new session. From a user message: the fork
+  // ends just before it and the message lands in the composer to be edited
+  // and re-sent. From a queen reply: the fork ends with that reply.
+  const [branching, setBranching] = useState(false);
+  const handleBranch = useCallback(
+    async (msg: ChatMessage) => {
+      if (!sessionId || branching) return;
+      let before: string | null;
+      if (msg.type === "user") {
+        before = userInputTimestamp(msg);
+        if (!before) return;
+      } else {
+        const at = combinedMessages.findIndex((m) => m.id === msg.id);
+        if (at < 0) return;
+        before = combinedMessages.slice(at + 1).map(userInputTimestamp).find((ts) => ts !== null) ?? null;
+      }
+      setBranching(true);
+      // Re-arms the composer's draft hand-over even when it's the same text.
+      setInitialDraft(null);
+      try {
+        const { session_id } = await sessionsApi.fork(sessionId, before);
+        if (msg.type === "user") {
+          const fileSession = msg.attachmentSessionId ?? sessionId;
+          // Best effort: a file that can't be fetched is left for the user to re-attach.
+          const files = await Promise.all(
+            (msg.images ?? []).map(async (img, i) => {
+              try {
+                const res = await fetch(resolveAttachmentUrl(img.image_url.url, fileSession));
+                if (!res.ok) return null;
+                const blob = await res.blob();
+                return new File([blob], img._fileName ?? `attachment-${i + 1}`, { type: blob.type });
+              } catch {
+                return null;
+              }
+            }),
+          );
+          branchDraftRef.current = {
+            sessionId: session_id,
+            text: stripSystemReminders(msg.content),
+            files: files.filter((f): f is File => f !== null),
+          };
+        }
+        setSwitchingSessionId(session_id);
+        setSearchParams({ session: session_id });
+      } catch (err) {
+        upsertMessage({
+          id: makeId(),
+          agent: "System",
+          agentColor: "",
+          content: `Couldn't branch the conversation: ${err instanceof Error ? err.message : String(err)}`,
+          timestamp: "",
+          type: "system",
+          thread: "queen-dm",
+          createdAt: Date.now(),
+        });
+      } finally {
+        setBranching(false);
+      }
+    },
+    [sessionId, branching, combinedMessages, setSearchParams, upsertMessage],
+  );
+
+  const handleRenameSession = useCallback(async (sid: string, title: string) => {
+    const { title: stored } = await sessionsApi.setTitle(sid, title);
+    setHistorySessions((prev) => prev.map((s) => (s.session_id === sid ? { ...s, title: stored } : s)));
+  }, []);
+
   const handleSelectHistoricalSession = useCallback(
     (nextSessionId: string) => {
       if (!nextSessionId || nextSessionId === sessionId) return;
@@ -1604,6 +1685,15 @@ export default function QueenDM() {
         const newId = event.data?.new_session_id as string | undefined;
         if (typeof newId === "string" && newId) {
           setSearchParams({ session: newId }, { replace: true });
+        }
+        return;
+      }
+
+      // Not part of the transcript, so also outside the historical guard.
+      if (event.type === "session_title_updated") {
+        const { session_id: titled, title } = (event.data ?? {}) as { session_id?: string; title?: string | null };
+        if (titled) {
+          setHistorySessions((prev) => prev.map((s) => (s.session_id === titled ? { ...s, title: title ?? null } : s)));
         }
         return;
       }
@@ -2744,7 +2834,8 @@ export default function QueenDM() {
           onToggleHistorySession={handleToggleHistorySession}
           historySessionMessages={historySessionMessages}
           initialDraft={initialDraft}
-          initialAttachments={handoff?.files ?? null}
+          onBranch={handleBranch}
+          initialAttachments={handoff?.files ?? branchFiles}
           autoSendToken={handoff?.token ?? null}
           queenProfileId={queenId ?? null}
           queenId={queenId}
@@ -2769,6 +2860,7 @@ export default function QueenDM() {
                 creatingNew={creatingNewSession}
                 onSelect={(sid) => setSearchParams({ session: sid })}
                 onCreateNew={handleCreateNewSession}
+                onRename={handleRenameSession}
               />
               <button
                 onClick={() => setActionPlanOpen((open) => !open)}

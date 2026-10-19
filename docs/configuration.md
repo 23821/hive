@@ -30,6 +30,64 @@ The `quickstart.sh` script creates this file during setup. It stores the default
 
 The default `max_tokens` value (8192) is defined as `DEFAULT_MAX_TOKENS` in `framework.orchestrator.edge` and re-exported from `framework.orchestrator`. Each agent's `RuntimeConfig` reads from this file at startup. To change defaults, either re-run `quickstart.sh` or edit the file directly.
 
+Optional packages installed next to Hive are turned on in this file too, under `channels` or
+`turn_context`: see [Optional packages](optional-packages.md).
+
+### A queen's own model
+
+Every queen uses the `llm` section unless she has her own under `queen_llm`, by queen id, in the
+same shape:
+
+```json
+"queen_llm": {
+  "queen_archivist": {"provider": "openai", "model": "model-id", "api_base": "https://api.example.com/v1", "api_key": "sk-..."}
+}
+```
+
+Set it in the dashboard from her profile (Org Chart → her card → Model): pick a saved provider,
+edit the section, or go back to the main model. Her running chats switch on their next model call,
+her context window follows her model, and changing the main model leaves her on hers. The key can
+be literal, `api_key_env_var` or in the credential store; the subscription logins (Claude Code,
+Codex, Kimi, Antigravity) work only for the main model. Her colony workers use her model too,
+unless `worker_llm` is set.
+
+### Fields a provider takes in the request body
+
+`llm`, `worker_llm` and each `queen_llm` entry take `extra_body`: fields sent as they are in every
+request body to that model. Use it for what a provider adds to the OpenAI format, such as how
+hard the model thinks. For DeepSeek:
+
+```json
+"queen_llm": {
+  "queen_archivist": {"provider": "openai", "model": "deepseek-flash", "api_base": "https://api.deepseek.com/v1", "api_key": "sk-...",
+                      "extra_body": {"reasoning_effort": "low"}}
+}
+```
+
+`{"thinking": {"type": "disabled"}}` turns DeepSeek's thinking off; `reasoning_effort` takes
+`low`, `high` (the default) or `max`. Other providers name these fields differently: see their
+documentation. The main model's `extra_body` also goes on its small background calls, such as
+recall, so turning thinking off there keeps them fast.
+
+### How often queens write memory
+
+Every few replies a queen reads back the recent conversation and updates her memory files, which
+takes a few model calls each time. The `memory_reflection` section sets how often, and on which
+model:
+
+```json
+"memory_reflection": {"every_turns": 6, "long_every": 4, "model": "main"}
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `every_turns` | `6` | Reflect after every this many of her replies |
+| `long_every` | `4` | Every this many reflections, also tidy all her memory files (merge and delete duplicates) |
+| `model` | `"main"` | `"main"`: the model she talks with. `"worker"`: the `worker_llm` model, or hers if `worker_llm` isn't set. Her dated timeline uses the same model |
+
+A context compaction also tidies her memory, and ending a session reflects once more if anything was
+said since the last reflection.
+
 ## Environment Variables
 
 ### LLM Providers (at least one required for real execution)

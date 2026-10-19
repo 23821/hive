@@ -134,6 +134,16 @@ def _append_items(session_dir: Path, items: list[dict[str, Any]], user_turns: in
     tmp.replace(session_dir / META_FILE)
 
 
+def mark_extracted(session_dir: Path) -> None:
+    """Record the session's current user messages as already extracted.
+
+    For messages whose items live in another session's timeline: a forked
+    session inherits its parent's messages, and extracting them again would
+    put every inherited fact in the timeline twice.
+    """
+    _append_items(session_dir, [], len(user_messages(session_dir)), model="")
+
+
 # ---------------------------------------------------------------------------
 # Extraction
 # ---------------------------------------------------------------------------

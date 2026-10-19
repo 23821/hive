@@ -14,6 +14,7 @@
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -147,7 +148,7 @@ async def handle_create_queen(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=400)
     except FileExistsError as e:
         return web.json_response({"error": f"queen id already exists: {e}"}, status=409)
-    schedule_push()
+    schedule_push("queen_profile", entry["id"])
     return web.json_response({"queen": entry}, status=201)
 
 
@@ -212,6 +213,84 @@ async def handle_get_profile(request: web.Request) -> web.Response:
 
     api_profile = _transform_profile_for_api(profile)
     return web.json_response({"id": queen_id, "has_avatar": _has_avatar(queen_id), **api_profile})
+
+
+async def handle_get_queen_llm(request: web.Request) -> web.Response:
+    """GET /api/queen/{queen_id}/llm — her own model (``queen_llm``), or null when she uses the main one."""
+    from framework.config import get_hive_config, get_preferred_model
+
+    queen_id = request.match_info["queen_id"]
+    try:
+        load_queen_profile(queen_id)
+    except FileNotFoundError:
+        return web.json_response({"error": f"Queen '{queen_id}' not found"}, status=404)
+    sections = get_hive_config().get("queen_llm")
+    section = sections.get(queen_id) if isinstance(sections, dict) else None
+    manager = request.app["manager"]
+    return web.json_response(
+        {
+            "queen_id": queen_id,
+            "section": section if isinstance(section, dict) else None,
+            "default_model": getattr(manager, "_model", None) or get_preferred_model(),
+        }
+    )
+
+
+async def handle_put_queen_llm(request: web.Request) -> web.Response:
+    """PUT /api/queen/{queen_id}/llm — give her a model of her own, or return her to the main one.
+
+    Body: ``{"section": {...} | null, "validate"?: true}``. The section has the ``llm`` slot's
+    shape and gets the same key check; ``null`` removes it. Her running sessions switch at once.
+    """
+    from framework.config import get_hive_config
+    from framework.server import queen_models
+    from framework.server.routes_config import _validate_provider_key, _write_config_atomic
+
+    queen_id = request.match_info["queen_id"]
+    try:
+        load_queen_profile(queen_id)
+    except FileNotFoundError:
+        return web.json_response({"error": f"Queen '{queen_id}' not found"}, status=404)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON body"}, status=400)
+    section = body.get("section") if isinstance(body, dict) else None
+    if section is not None:
+        if not isinstance(section, dict):
+            return web.json_response({"error": "'section' must be a JSON object or null"}, status=400)
+        if not str(section.get("provider") or "").strip() or not str(section.get("model") or "").strip():
+            return web.json_response({"error": "'provider' and 'model' are required"}, status=400)
+        api_key = str(section.get("api_key") or "") or os.environ.get(str(section.get("api_key_env_var") or ""), "")
+        api_base = str(section.get("api_base") or "").strip() or None
+        if body.get("validate", True) and api_key and api_base:
+            check = await _validate_provider_key(str(section["provider"]), api_key, api_base=api_base, model=str(section["model"]))
+            if check.get("valid") is False:
+                return web.json_response(
+                    {"error": f"Key check failed against {api_base}: {check.get('message', 'unknown error')}"},
+                    status=400,
+                )
+
+    config = get_hive_config()
+    sections = config.get("queen_llm") if isinstance(config.get("queen_llm"), dict) else {}
+    if section is None:
+        sections.pop(queen_id, None)
+    else:
+        sections[queen_id] = section  # verbatim, like the llm slot
+    if sections:
+        config["queen_llm"] = sections
+    else:
+        config.pop("queen_llm", None)
+    _write_config_atomic(config)
+
+    manager = request.app["manager"]
+    switched = sum(
+        1
+        for s in manager.list_sessions()
+        if getattr(s, "queen_name", None) == queen_id and queen_models.apply(s.llm, queen_id, default_model=getattr(manager, "_model", None))
+    )
+    logger.info("Queen %s model %s; %d running session(s) switched", queen_id, "set" if section else "cleared", switched)
+    return web.json_response({"queen_id": queen_id, "section": section, "sessions_switched": switched})
 
 
 def _has_avatar(queen_id: str) -> bool:
@@ -414,11 +493,12 @@ async def handle_queen_session(request: web.Request) -> web.Response:
     # When multiple DM sessions for this queen are live at once (e.g. the
     # user created a new session, then navigated away and back), return
     # the most recently loaded one so we don't resurrect a stale older
-    # session ahead of a freshly created one.
+    # session ahead of a freshly created one. A channel's sessions (a QQ
+    # group, say) are its own conversations, not the user's DM.
     live_matches = [
         s
         for s in manager.list_sessions()
-        if s.queen_name == queen_id and s.colony_id is None and s.worker_path is None and not getattr(s, "superseded_by", None)
+        if s.queen_name == queen_id and s.colony_id is None and s.worker_path is None and not getattr(s, "superseded_by", None) and s.channel is None
     ]
     if live_matches:
         latest = max(live_matches, key=lambda s: s.loaded_at)
@@ -464,7 +544,7 @@ async def handle_queen_session(request: web.Request) -> web.Response:
                 # Skip colony-fork duplicates and sessions retired by a
                 # task_create(new_session=true) fork — the successor
                 # session is the one to resume.
-                if meta.get("colony_fork") or meta.get("superseded_by"):
+                if meta.get("colony_fork") or meta.get("superseded_by") or meta.get("channel"):
                     continue
                 resume_from = candidate.name
                 break
@@ -632,7 +712,8 @@ async def handle_new_queen_session(request: web.Request) -> web.Response:
         )
 
     # Park any previously-live DM sessions for this queen before minting a
-    # fresh one. Without this, every click of "New Session" leaks a live
+    # fresh one. A channel's sessions (a QQ group, say) are other people's
+    # chats and are never parked. Without this, every click of "New Session" leaks a live
     # entry into manager._sessions and the session-switcher dropdown shows
     # duplicate "Live" badges for sessions whose UI has already moved on
     # (the SSE stream + URL follow the fresh session id; the old one is
@@ -649,7 +730,7 @@ async def handle_new_queen_session(request: web.Request) -> web.Response:
         [
             s
             for s in manager.list_sessions()
-            if s.queen_name == queen_id and getattr(s, "colony_id", None) is None and getattr(s, "worker_path", None) is None
+            if s.queen_name == queen_id and getattr(s, "colony_id", None) is None and getattr(s, "worker_path", None) is None and s.channel is None
         ]
         if park_others
         else []
@@ -823,6 +904,8 @@ def register_routes(app: web.Application) -> None:
     app.router.add_get("/api/queen/profiles", handle_list_profiles)
     app.router.add_get("/api/queen/{queen_id}/profile", handle_get_profile)
     app.router.add_patch("/api/queen/{queen_id}/profile", handle_update_profile)
+    app.router.add_get("/api/queen/{queen_id}/llm", handle_get_queen_llm)
+    app.router.add_put("/api/queen/{queen_id}/llm", handle_put_queen_llm)
     app.router.add_post("/api/queen/create", handle_create_queen)
     app.router.add_post("/api/queen/initialize-preferences", handle_initialize_preferences)
     app.router.add_post("/api/queen/{queen_id}/avatar", handle_upload_avatar)

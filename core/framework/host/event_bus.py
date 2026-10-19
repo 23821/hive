@@ -239,6 +239,8 @@ class EventType(StrEnum):
     # the new session via URL replace (no banner, no flicker).
     # Data: {new_session_id, queen_id, from_session_id, reason}.
     SESSION_FORKED = "session_forked"
+    # A session got (or changed) its title. Data: {session_id, title}.
+    SESSION_TITLE_UPDATED = "session_title_updated"
 
     # Queen phase changes (working <-> reviewing)
     QUEEN_PHASE_CHANGED = "queen_phase_changed"

@@ -28,7 +28,7 @@ class FakeJudge:
     def __init__(self, p: float) -> None:
         self.p, self.states = p, []
 
-    async def __call__(self, slot, state):
+    async def __call__(self, slot, question, state, criteria):
         self.states.append(state)
         return self.p
 

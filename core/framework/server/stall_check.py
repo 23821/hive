@@ -9,12 +9,7 @@ tools she called. When the judge says she announced an action she never took
 one reminder to carry it out. At most one reminder per user message, so a
 mistaken judgment can't loop.
 
-The judge slot names a protocol, an endpoint, a model and a key; nothing about
-the vendor lives here. Supported protocol: ``typesafe`` (TypeSafe's
-``/systemone`` "noul" question, e.g. Jev), e.g.::
-
-    "judge": {"protocol": "typesafe", "api_base": "<endpoint>", "model": "<model>", "api_key": "...", "threshold": 0.5}
-
+The judge is the one in the ``judge`` slot (see ``framework.server.judge``).
 Both the option and the slot are read when a turn ends, so turning the check
 on or off, or changing the judge, applies to running sessions at once.
 """
@@ -23,8 +18,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from typing import Any
+
+from framework.server import judge
 
 logger = logging.getLogger(__name__)
 
@@ -40,53 +37,25 @@ REMINDER = (
     "Don't mention this reminder.\n"
     "</system-reminder>"
 )
-# A judge that hangs must not hold the turn's follow-up for long.
-_JUDGE_TIMEOUT_S = 20.0
-
-Judge = Callable[[dict[str, Any], dict[str, Any]], Awaitable[float]]
 
 
 def judge_slot() -> dict[str, Any] | None:
-    """The configured ``judge`` slot, when the stall check is on and it is usable."""
-    from framework.config import get_hive_config, get_stall_check_enabled
+    """The configured ``judge`` slot, when the stall check is on and the slot is usable."""
+    from framework.config import get_stall_check_enabled
 
-    if not get_stall_check_enabled():
-        return None
-    slot = get_hive_config().get("judge")
-    if not isinstance(slot, dict) or not slot.get("api_base") or not slot.get("api_key"):
-        return None
-    return slot
-
-
-async def typesafe_judge(slot: dict[str, Any], state: dict[str, Any]) -> float:
-    """p(stalled) from a TypeSafe ``/systemone`` noul question."""
-    import httpx
-
-    body = {"state": state, "model": slot.get("model"), "questions": {"stalled": {"type": "noul", "instructions": _QUESTION}}}
-    async with httpx.AsyncClient(timeout=_JUDGE_TIMEOUT_S) as client:
-        resp = await client.post(
-            f"{str(slot['api_base']).rstrip('/')}/systemone",
-            json=body,
-            headers={"Authorization": f"Bearer {slot['api_key']}"},
-        )
-        resp.raise_for_status()
-        return float(resp.json()["answers"]["stalled"]["noul"])
-
-
-_JUDGES: dict[str, Judge] = {"typesafe": typesafe_judge}
+    return judge.slot() if get_stall_check_enabled() else None
 
 
 def subscribe_stall_check(
     event_bus: Any,
     queen_node: Callable[[], Any],
     *,
-    judges: dict[str, Judge] | None = None,
+    judges: dict[str, judge.Protocol] | None = None,
 ) -> list[str]:
     """Watch the queen's turns on ``event_bus``; ``queen_node()`` returns the node to remind."""
     from framework.agent_loop.visible_error import is_visible_error
     from framework.host.event_bus import EventType
 
-    judges = judges or _JUDGES
     turn: dict[str, Any] = {"user": "", "reasoning": "", "reply": "", "tools": [], "judged": False}
     running: set[asyncio.Task[None]] = set()
 
@@ -94,20 +63,14 @@ def subscribe_stall_check(
         slot = judge_slot()
         if slot is None:
             return
-        judge = judges.get(str(slot.get("protocol") or ""))
-        if judge is None:
-            logger.warning("stall check: judge protocol %r is not supported (use one of %s)", slot.get("protocol"), sorted(judges))
-            return
         state = {
             "user_message": user[-2000:],
             "assistant_reasoning_tail": reasoning[-1500:],
             "assistant_reply": reply[-1500:],
             "tools_called_this_turn": tools,
         }
-        try:
-            p = await judge(slot, state)
-        except Exception as e:
-            logger.info("stall check: judge unavailable (%s: %s)", type(e).__name__, e)
+        p = await judge.ask(_QUESTION, state, protocols=judges)
+        if p is None:
             return
         threshold = float(slot.get("threshold", 0.5))
         if p < threshold:

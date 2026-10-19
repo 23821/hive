@@ -107,6 +107,10 @@ class MyChatChannel:
 - **`subscribe`** hears each finished model turn's text, each `ask_user` question, the files she
   hands over with `attach_file`, and each failed model call, in order, including after the session is resumed and for messages typed in the
   dashboard.
+- **`judge`** asks the judge in the `judge` slot (Settings → AI Model → Judge) a yes/no question
+  about the `state` you pass, and returns the probability of yes, or `None` when no judge is set
+  up or it can't answer now. A channel can use it to decide, say, whether the queen should speak
+  up in a group without being addressed. Each call is one request to the judge's vendor.
 - The dashboard leaves channel sessions alone: opening the queen or starting a new chat with her
   never picks or stops one. `GET /api/channels` lists installed channels as `running`, `off` or
   `failed` (with the error).

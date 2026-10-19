@@ -111,6 +111,17 @@ class ChannelHost:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    async def judge(self, question: str, state: dict[str, Any], *, criteria: dict[str, str] | None = None) -> float | None:
+        """The probability, from the judge in the ``judge`` slot, that the answer to ``question`` is yes.
+
+        ``state`` is what the judge reads; ``criteria`` may describe what counts as ``"true"`` and
+        ``"false"``. ``None`` when no judge is configured or it can't answer now (the reason is
+        logged). Each call is one request to the judge's vendor.
+        """
+        from framework.server import judge
+
+        return await judge.ask(question, state, criteria=criteria)
+
     async def open_session(self, queen_id: str, *, session_id: str | None = None, title: str | None = None) -> str:
         """The session for one conversation with ``queen_id``, started and ready for :meth:`send`.
 

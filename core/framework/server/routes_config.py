@@ -317,7 +317,12 @@ def _hot_swap_sessions(request: web.Request, full_model: str, api_key: str | Non
             return True
         return False
 
+    from framework.server import queen_models
+
     for session in manager.list_sessions():
+        # A queen with a model of her own (queen_llm) keeps it when the main model changes.
+        if queen_models.has_own(getattr(session, "queen_name", None)):
+            continue
         if _reconfigure_if_possible(getattr(session, "llm", None)):
             swapped += 1
         # ColonyRuntime holds its own worker LLM; expose attribute may be

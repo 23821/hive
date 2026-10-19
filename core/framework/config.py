@@ -585,6 +585,77 @@ def get_max_context_tokens(fallback: int = DEFAULT_MAX_CONTEXT_TOKENS) -> int:
     return fallback
 
 
+# ---------------------------------------------------------------------------
+# A queen's own model: configuration.json "queen_llm": {"<queen_id>": <section>}
+# ---------------------------------------------------------------------------
+
+
+def get_queen_llm_section(queen_id: str | None) -> dict[str, Any] | None:
+    """The queen's own model section under ``queen_llm``, in the ``llm`` slot's shape.
+
+    ``None`` when she has none (or it lacks a provider and model): she uses the ``llm`` slot.
+    """
+    if not queen_id:
+        return None
+    sections = get_hive_config().get("queen_llm")
+    if not isinstance(sections, dict):
+        return None
+    section = sections.get(queen_id)
+    if not isinstance(section, dict) or not section.get("provider") or not str(section.get("model") or "").strip():
+        return None
+    return section
+
+
+def section_model(section: dict[str, Any]) -> str:
+    """``provider/model`` for a model section, as LiteLLM takes it."""
+    provider = str(section["provider"])
+    model = str(section["model"]).strip()
+    if provider.lower() == "openrouter" and model.lower().startswith("openrouter/"):
+        model = model[len("openrouter/") :]
+    return f"{provider}/{model}"
+
+
+def get_queen_api_key(queen_id: str | None) -> str | None:
+    """The key for the queen's model: her section's literal key, the credential store for its
+    provider, its ``api_key_env_var``, then the main key. Without her own section, the main key."""
+    section = get_queen_llm_section(queen_id)
+    if section is None:
+        return get_api_key()
+    if section.get("api_key"):
+        return section["api_key"]
+    cred_key = _get_api_key_from_credential_store(section.get("provider", ""))
+    if cred_key:
+        return cred_key
+    env_var = section.get("api_key_env_var")
+    if env_var and os.environ.get(env_var):
+        return os.environ[env_var]
+    return get_api_key()
+
+
+def get_queen_api_base(queen_id: str | None) -> str | None:
+    """The endpoint for the queen's model; without her own section, the main one."""
+    section = get_queen_llm_section(queen_id)
+    if section is None:
+        return get_api_base()
+    if section.get("api_base"):
+        return section["api_base"]
+    if str(section.get("provider", "")).lower() == "openrouter":
+        return OPENROUTER_API_BASE
+    return None
+
+
+def get_queen_max_context_tokens(queen_id: str | None, fallback: int = DEFAULT_MAX_CONTEXT_TOKENS) -> int:
+    """The context window to budget the queen's loop by: her section's ``max_context_tokens``,
+    else her model's catalog entry, else :func:`get_max_context_tokens`."""
+    section = get_queen_llm_section(queen_id)
+    if section is None:
+        return get_max_context_tokens(fallback)
+    if "max_context_tokens" in section:
+        return section["max_context_tokens"]
+    catalog = _catalog_limits_for(section)
+    return catalog[1] if catalog is not None else fallback
+
+
 def get_aux_max_tokens() -> int:
     """Output budget for small utility LLM calls (``llm.aux_max_tokens``).
 

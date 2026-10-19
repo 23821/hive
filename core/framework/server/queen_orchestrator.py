@@ -532,12 +532,19 @@ async def create_queen(
     from framework.llm.capabilities import supports_image_tool_results
     from framework.loader.mcp_registry import MCPRegistry
     from framework.loader.tool_registry import ToolRegistry
-    from framework.server import boot_status
+
+    # A queen with a model of her own (queen_llm) runs on it. Nothing holds session.llm yet, so
+    # it is replaced outright; a queen picked later is switched in place (queen_models.apply).
+    from framework.server import boot_status, queen_models
     from framework.tools.queen_lifecycle_tools import (
         QueenPhaseState,
         normalize_legacy_phase,
         register_queen_lifecycle_tools,
     )
+
+    if queen_models.has_own(session.queen_name):
+        session.llm = queen_models.build(session.queen_name)
+        logger.info("Queen %s uses her own model %s", session.queen_name, getattr(session.llm, "model", "?"))
 
     # ---- Tool registry ------------------------------------------------
     # Use pre-loaded cached registry if available (fast path)
@@ -1344,7 +1351,8 @@ async def create_queen(
         # queen in the UI), use that identity instead of LLM auto-selection.
         # Also skip LLM auto-selection if queen was already selected during
         # session creation (e.g., from home screen classification).
-        if session.queen_name and session.queen_name != "default":
+        preselected = bool(session.queen_name and session.queen_name != "default")
+        if preselected:
             queen_id = session.queen_name
             logger.info("Using pre-selected queen: %s", queen_id)
         else:
@@ -1365,6 +1373,9 @@ async def create_queen(
         phase_state.queen_identity_prompt = identity_prompt
         # Route session storage to ~/.hive/agents/queens/{queen_id}/sessions/
         session.queen_name = queen_id
+        # Picked just now: if she has a model of her own, her running loop switches to it.
+        if not preselected and queen_models.has_own(queen_id):
+            queen_models.apply(session.llm, queen_id, default_model=getattr(session_manager, "_model", None))
 
         # Relocate session dir from default/ to the selected queen's dir
         # so all writes (conversations, events) go to the correct queen.
@@ -1575,8 +1586,8 @@ async def create_queen(
             _iter_cap = _os.environ.get("HIVE_MAX_ITER")
             _default_max_iter = int(_iter_cap) if (_iter_cap and _iter_cap.isdigit()) else 999_999
             from framework.config import (
-                get_max_context_tokens as _get_max_ctx,
                 get_max_tool_result_chars as _get_max_trc,
+                get_queen_max_context_tokens as _get_queen_max_ctx,
             )
 
             queen_loop_config = LoopConfig(
@@ -1586,7 +1597,7 @@ async def create_queen(
                 # Config/catalog first (llm.max_context_tokens, model window),
                 # then the queen profile's legacy literal — a 32k local model
                 # must not run with a 180k compaction budget.
-                max_context_tokens=_get_max_ctx(fallback=lc.get("max_context_tokens", 180_000)),
+                max_context_tokens=_get_queen_max_ctx(session.queen_name, fallback=lc.get("max_context_tokens", 180_000)),
                 max_tool_result_chars=_get_max_trc(fallback=lc.get("max_tool_result_chars", 30_000)),
                 spillover_dir=str(queen_dir / "data"),
                 hooks=lc.get("hooks", {}),

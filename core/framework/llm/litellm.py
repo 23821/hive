@@ -44,6 +44,9 @@ from framework.llm.stream_events import StreamEvent
 
 logger = logging.getLogger(__name__)
 
+# reconfigure(): "leave the key resolver as it is" (None means "no resolver").
+_KEEP = object()
+
 logging.getLogger("openai._base_client").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
@@ -1572,13 +1575,24 @@ class LiteLLMProvider(LLMProvider):
             eh = self.extra_kwargs.setdefault("extra_headers", {})
             eh["Authorization"] = f"Bearer {fresh}"
 
-    def reconfigure(self, model: str, api_key: str | None = None, api_base: str | None = None) -> None:
+    def reconfigure(
+        self,
+        model: str,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        *,
+        api_key_resolver: Callable[[], str | None] | None | object = _KEEP,
+    ) -> None:
         """Hot-swap the model, API key, and/or base URL on this provider instance.
 
         Since the same LiteLLMProvider object is shared by reference across the
         session, queen runner, agent runtime, and execution streams, mutating
         these attributes in-place propagates to all callers on the next LLM call.
+        ``api_key_resolver``, when given, replaces the callable that re-resolves
+        the key before each call (a model with its own key needs its own).
         """
+        if api_key_resolver is not _KEEP:
+            self._api_key_resolver = api_key_resolver  # type: ignore[assignment]  # narrowed by the sentinel check
         _original_model = model
         self._hive_proxy_auth = bool(model.lower().startswith("hive/"))
         if _is_ollama_model(model):

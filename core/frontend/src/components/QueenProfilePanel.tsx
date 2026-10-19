@@ -11,6 +11,7 @@ import { sessionsApi } from "@/api/sessions";
 import { compressImage } from "@/lib/image-utils";
 import type { Colony } from "@/types/colony";
 import { slugToColonyId } from "@/lib/colony-registry";
+import QueenModelSection from "./QueenModelSection";
 
 interface QueenProfilePanelProps {
   queenId: string;
@@ -509,6 +510,11 @@ export default function QueenProfilePanel({ queenId, colonies, onClose }: QueenP
                 </button>
               </div>
             )}
+
+            <div className="mb-6">
+              <SectionHeader>Model</SectionHeader>
+              <QueenModelSection queenId={queenId} />
+            </div>
 
             <div className="mb-6">
               <SectionHeader>Tools</SectionHeader>

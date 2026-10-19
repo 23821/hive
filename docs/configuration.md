@@ -33,6 +33,24 @@ The default `max_tokens` value (8192) is defined as `DEFAULT_MAX_TOKENS` in `fra
 Optional packages installed next to Hive are turned on in this file too, under `channels` or
 `turn_context`: see [Optional packages](optional-packages.md).
 
+### A queen's own model
+
+Every queen uses the `llm` section unless she has her own under `queen_llm`, by queen id, in the
+same shape:
+
+```json
+"queen_llm": {
+  "queen_archivist": {"provider": "openai", "model": "model-id", "api_base": "https://api.example.com/v1", "api_key": "sk-..."}
+}
+```
+
+Set it in the dashboard from her profile (Org Chart → her card → Model): pick a saved provider,
+edit the section, or go back to the main model. Her running chats switch on their next model call,
+her context window follows her model, and changing the main model leaves her on hers. The key can
+be literal, `api_key_env_var` or in the credential store; the subscription logins (Claude Code,
+Codex, Kimi, Antigravity) work only for the main model. Her colony workers use her model too,
+unless `worker_llm` is set.
+
 ## Environment Variables
 
 ### LLM Providers (at least one required for real execution)

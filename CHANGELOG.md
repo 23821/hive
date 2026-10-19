@@ -2,6 +2,10 @@
 
 > Full, detailed release notes live in [`docs/releases/`](docs/releases/). The entries below summarize the architecturally significant releases; older entries follow.
 
+## v1.0.10 — Her Own Model
+
+**New:** a queen can run on a model of her own (`queen_llm`), set from her profile in the dashboard; her running chats switch at once. **Fixed:** `hive serve` stops within seconds instead of waiting on last reflections and open dashboard streams. See [docs/releases/v1.0.10.md](docs/releases/v1.0.10.md).
+
 ## v1.0.9 — Ask the Judge
 
 **New:** `ChannelHost.judge`, so a channel can ask the judge (the `judge` slot, e.g. TypeSafe Jev) its own yes/no question, for example whether the queen should speak up in a group where nobody addressed her. **Changed:** the stall check asks the judge through the same code; its behavior is unchanged. See [docs/releases/v1.0.9.md](docs/releases/v1.0.9.md).

@@ -38,7 +38,7 @@ class FakeLLM:
     def __init__(self, model):
         self.model, self.calls = model, []
 
-    def reconfigure(self, model, api_key=None, api_base=None, *, api_key_resolver=None):
+    def reconfigure(self, model, api_key=None, api_base=None, *, api_key_resolver=None, extra_body=None):
         self.model = model
         self.calls.append((model, api_key, api_base, api_key_resolver() if api_key_resolver else None))
 
@@ -73,6 +73,43 @@ def test_her_provider_uses_her_key_on_every_call(config_file):
     assert llm.model == "openai/archivist-1"
     assert llm._api_key_resolver() == "sk-rotated"
     assert queen_models.build("queen_sales") is None
+
+
+def test_her_extra_body_goes_on_her_provider(config_file):
+    _with(config_file, queen_llm={"queen_growth": {**OWN, "extra_body": {"reasoning_effort": "low"}}, "queen_sales": OWN})
+
+    assert queen_models.build("queen_growth").extra_kwargs["extra_body"] == {"reasoning_effort": "low"}
+    assert "extra_body" not in queen_models.build("queen_sales").extra_kwargs
+
+
+def test_switching_her_model_switches_the_extra_body_too(config_file):
+    from framework.llm.litellm import LiteLLMProvider
+
+    main_body = {"thinking": {"type": "enabled"}}
+    _with(config_file, llm={**MAIN, "extra_body": main_body}, queen_llm={"queen_growth": {**OWN, "extra_body": {"reasoning_effort": "low"}}})
+    llm = LiteLLMProvider(model="anthropic/claude-x", api_key="sk-main", extra_body=main_body)
+
+    queen_models.apply(llm, "queen_growth")
+    hers = llm.extra_kwargs.get("extra_body")
+    _with(config_file, llm={**MAIN, "extra_body": main_body}, queen_llm={"queen_growth": OWN})
+    queen_models.apply(llm, "queen_growth")
+    hers_without = llm.extra_kwargs.get("extra_body")
+    _with(config_file, llm={**MAIN, "extra_body": main_body})
+    queen_models.apply(llm, "queen_growth")
+
+    assert hers == {"reasoning_effort": "low"}
+    assert hers_without is None
+    assert llm.extra_kwargs["extra_body"] == main_body
+
+
+def test_the_worker_model_sends_its_own_extra_body(config_file):
+    _with(
+        config_file,
+        llm={**MAIN, "extra_body": {"thinking": {"type": "enabled"}}},
+        worker_llm={**OWN, "extra_body": {"thinking": {"type": "disabled"}}},
+    )
+
+    assert hive_config.get_worker_llm_extra_kwargs() == {"extra_body": {"thinking": {"type": "disabled"}}}
 
 
 @pytest.mark.asyncio

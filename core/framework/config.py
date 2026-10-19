@@ -489,7 +489,8 @@ def get_worker_llm_extra_kwargs() -> dict[str, Any]:
             }
     if worker_llm.get("provider") == "ollama":
         return {"num_ctx": worker_llm.get("num_ctx", 16384)}
-    return {}
+    extra_body = section_extra_body(worker_llm)
+    return {"extra_body": extra_body} if extra_body else {}
 
 
 DEFAULT_MAX_CONTEXT_TOKENS = 32_000
@@ -613,6 +614,13 @@ def section_model(section: dict[str, Any]) -> str:
     if provider.lower() == "openrouter" and model.lower().startswith("openrouter/"):
         model = model[len("openrouter/") :]
     return f"{provider}/{model}"
+
+
+def section_extra_body(section: dict[str, Any]) -> dict[str, Any] | None:
+    """A model section's ``extra_body``: fields sent as they are in every request body, such as
+    a provider's thinking switch or ``reasoning_effort``."""
+    extra_body = section.get("extra_body")
+    return dict(extra_body) if isinstance(extra_body, dict) and extra_body else None
 
 
 def get_queen_api_key(queen_id: str | None) -> str | None:
@@ -1129,10 +1137,8 @@ def get_llm_extra_kwargs() -> dict[str, Any]:
     # a model's default thinking). Applied to every LLM call, including the
     # small recall/judge aux calls that otherwise burn their token budget on
     # hidden reasoning and return empty.
-    extra_body = llm.get("extra_body")
-    if isinstance(extra_body, dict) and extra_body:
-        return {"extra_body": extra_body}
-    return {}
+    extra_body = section_extra_body(llm)
+    return {"extra_body": extra_body} if extra_body else {}
 
 
 # ---------------------------------------------------------------------------

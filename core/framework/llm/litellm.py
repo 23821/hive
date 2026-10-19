@@ -1582,6 +1582,7 @@ class LiteLLMProvider(LLMProvider):
         api_base: str | None = None,
         *,
         api_key_resolver: Callable[[], str | None] | None | object = _KEEP,
+        extra_body: dict[str, Any] | None | object = _KEEP,
     ) -> None:
         """Hot-swap the model, API key, and/or base URL on this provider instance.
 
@@ -1590,9 +1591,16 @@ class LiteLLMProvider(LLMProvider):
         these attributes in-place propagates to all callers on the next LLM call.
         ``api_key_resolver``, when given, replaces the callable that re-resolves
         the key before each call (a model with its own key needs its own).
+        ``extra_body``, when given, replaces the fields sent in every request
+        body; ``None`` drops them.
         """
         if api_key_resolver is not _KEEP:
             self._api_key_resolver = api_key_resolver  # type: ignore[assignment]  # narrowed by the sentinel check
+        if extra_body is not _KEEP:
+            if extra_body:
+                self.extra_kwargs["extra_body"] = extra_body
+            else:
+                self.extra_kwargs.pop("extra_body", None)
         _original_model = model
         self._hive_proxy_auth = bool(model.lower().startswith("hive/"))
         if _is_ollama_model(model):

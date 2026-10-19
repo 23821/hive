@@ -8,8 +8,9 @@ session). When she is picked only once the session runs, or her entry changes wh
 run, her model is put on the session's provider in place, so everything holding it (her loop, her
 tools, colony workers sharing it) switches with it.
 
-Supported: a literal key, ``api_key_env_var`` or the credential store, any endpoint. Not
-supported: the subscription logins (Claude Code, Codex, Kimi, Antigravity).
+Supported: a literal key, ``api_key_env_var`` or the credential store, any endpoint, and
+``extra_body`` (a provider's thinking switch, ``reasoning_effort``). Not supported: the
+subscription logins (Claude Code, Codex, Kimi, Antigravity).
 """
 
 from __future__ import annotations
@@ -20,10 +21,12 @@ from typing import Any
 from framework.config import (
     get_api_base,
     get_api_key,
+    get_llm_extra_kwargs,
     get_preferred_model,
     get_queen_api_base,
     get_queen_api_key,
     get_queen_llm_section,
+    section_extra_body,
     section_model,
 )
 
@@ -38,6 +41,8 @@ def build(queen_id: str) -> Any | None:
     from framework.llm.litellm import LiteLLMProvider
 
     extra: dict[str, Any] = {"num_ctx": section.get("num_ctx", 16384)} if section.get("provider") == "ollama" else {}
+    if extra_body := section_extra_body(section):
+        extra["extra_body"] = extra_body
     return LiteLLMProvider(
         model=section_model(section),
         api_key=get_queen_api_key(queen_id),
@@ -57,13 +62,20 @@ def apply(llm: Any, queen_id: str, *, default_model: str | None = None) -> bool:
         return False
     section = get_queen_llm_section(queen_id)
     if section is None:
-        llm.reconfigure(default_model or get_preferred_model(), api_key=get_api_key(), api_base=get_api_base(), api_key_resolver=get_api_key)
+        llm.reconfigure(
+            default_model or get_preferred_model(),
+            api_key=get_api_key(),
+            api_base=get_api_base(),
+            api_key_resolver=get_api_key,
+            extra_body=get_llm_extra_kwargs().get("extra_body"),
+        )
     else:
         llm.reconfigure(
             section_model(section),
             api_key=get_queen_api_key(queen_id),
             api_base=get_queen_api_base(queen_id),
             api_key_resolver=lambda: get_queen_api_key(queen_id),
+            extra_body=section_extra_body(section),
         )
     logger.info("queen %s now uses %s", queen_id, getattr(llm, "model", "?"))
     return True

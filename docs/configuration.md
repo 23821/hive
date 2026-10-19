@@ -51,6 +51,24 @@ be literal, `api_key_env_var` or in the credential store; the subscription login
 Codex, Kimi, Antigravity) work only for the main model. Her colony workers use her model too,
 unless `worker_llm` is set.
 
+### Fields a provider takes in the request body
+
+`llm`, `worker_llm` and each `queen_llm` entry take `extra_body`: fields sent as they are in every
+request body to that model. Use it for what a provider adds to the OpenAI format, such as how
+hard the model thinks. For DeepSeek:
+
+```json
+"queen_llm": {
+  "queen_archivist": {"provider": "openai", "model": "deepseek-flash", "api_base": "https://api.deepseek.com/v1", "api_key": "sk-...",
+                      "extra_body": {"reasoning_effort": "low"}}
+}
+```
+
+`{"thinking": {"type": "disabled"}}` turns DeepSeek's thinking off; `reasoning_effort` takes
+`low`, `high` (the default) or `max`. Other providers name these fields differently: see their
+documentation. The main model's `extra_body` also goes on its small background calls, such as
+recall, so turning thinking off there keeps them fast.
+
 ### How often queens write memory
 
 Every few replies a queen reads back the recent conversation and updates her memory files, which

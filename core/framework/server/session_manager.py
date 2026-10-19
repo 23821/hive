@@ -2221,3 +2221,15 @@ class SessionManager:
         for sid in session_ids:
             await self.stop_session(sid)
         logger.info("All sessions stopped")
+
+    async def finish_background_tasks(self, timeout: float) -> None:
+        """Give the work stopping sessions started (shutdown reflections, timeline extraction)
+        up to ``timeout`` seconds, then cancel what is left so the server can exit."""
+        pending = {t for t in self._background_tasks if not t.done()}
+        if not pending:
+            return
+        _, pending = await asyncio.wait(pending, timeout=timeout)
+        for task in pending:
+            task.cancel()
+        if pending:
+            logger.info("%d shutdown task(s) still running after %.0fs; cancelled", len(pending), timeout)

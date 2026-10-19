@@ -30,6 +30,9 @@ The `quickstart.sh` script creates this file during setup. It stores the default
 
 The default `max_tokens` value (8192) is defined as `DEFAULT_MAX_TOKENS` in `framework.orchestrator.edge` and re-exported from `framework.orchestrator`. Each agent's `RuntimeConfig` reads from this file at startup. To change defaults, either re-run `quickstart.sh` or edit the file directly.
 
+Optional packages installed next to Hive are turned on in this file too, under `channels` or
+`turn_context`: see [Optional packages](optional-packages.md).
+
 ## Environment Variables
 
 ### LLM Providers (at least one required for real execution)

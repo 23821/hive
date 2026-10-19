@@ -61,7 +61,8 @@ result = await loop.execute(ctx)
 ## Channels: reach queens from a chat app
 
 A channel runs inside `hive serve` and connects a chat app to a queen. Each conversation in the
-app (a group, a private chat) is one queen session, which also shows in the dashboard.
+app (a group, a private chat) is one queen session, which also shows in the dashboard. Users
+install it as an [optional package](optional-packages.md); point your README there.
 
 Register a factory in the `hive.channels` entry-point group:
 
@@ -115,7 +116,7 @@ class MyChatChannel:
 A turn-context package runs inside `hive serve`. Before a queen answers a user message, it gets
 her id and the message, and the text it returns reaches her as a `<system-reminder>` just ahead of
 that message. Use it for context that depends on what was said: examples in her voice, notes
-from your own store.
+from your own store. Users install it as an [optional package](optional-packages.md).
 
 Register a factory in the `hive.turn_context` entry-point group:
 

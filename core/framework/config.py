@@ -976,6 +976,40 @@ def get_stall_check_enabled() -> bool:
     return bool(get_hive_config().get("stall_check", False))
 
 
+@dataclass(frozen=True)
+class MemoryReflectionConfig:
+    """How often a queen's memory reflection runs, and on which model.
+
+    configuration.json: ``"memory_reflection": {"every_turns": 6, "long_every": 4, "model": "main"}``.
+    """
+
+    #: Reflect after every this many of her answered turns in a session.
+    every_turns: int = 6
+    #: Every this many reflections, also consolidate the memory files (a long reflection).
+    long_every: int = 4
+    #: "main" (the session's model) or "worker" (the worker_llm slot, when set).
+    model: str = "main"
+
+
+def get_memory_reflection_config() -> MemoryReflectionConfig:
+    """The ``memory_reflection`` section, with defaults for anything missing or invalid."""
+    raw = get_hive_config().get("memory_reflection")
+    raw = raw if isinstance(raw, dict) else {}
+    default = MemoryReflectionConfig()
+
+    def positive(key: str, fallback: int) -> int:
+        value = raw.get(key, fallback)
+        is_count = isinstance(value, int) and not isinstance(value, bool)
+        return value if is_count and value >= 1 else fallback
+
+    model = raw.get("model", default.model)
+    return MemoryReflectionConfig(
+        every_turns=positive("every_turns", default.every_turns),
+        long_every=positive("long_every", default.long_every),
+        model=model if model in ("main", "worker") else default.model,
+    )
+
+
 def get_memory_timeline_enabled() -> bool:
     """Return whether queens keep a dated timeline of what the user mentions.
 

@@ -51,6 +51,25 @@ be literal, `api_key_env_var` or in the credential store; the subscription login
 Codex, Kimi, Antigravity) work only for the main model. Her colony workers use her model too,
 unless `worker_llm` is set.
 
+### How often queens write memory
+
+Every few replies a queen reads back the recent conversation and updates her memory files, which
+takes a few model calls each time. The `memory_reflection` section sets how often, and on which
+model:
+
+```json
+"memory_reflection": {"every_turns": 6, "long_every": 4, "model": "main"}
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `every_turns` | `6` | Reflect after every this many of her replies |
+| `long_every` | `4` | Every this many reflections, also tidy all her memory files (merge and delete duplicates) |
+| `model` | `"main"` | `"main"`: the model she talks with. `"worker"`: the `worker_llm` model, or hers if `worker_llm` isn't set. Her dated timeline uses the same model |
+
+A context compaction also tidies her memory, and ending a session reflects once more if anything was
+said since the last reflection.
+
 ## Environment Variables
 
 ### LLM Providers (at least one required for real execution)

@@ -1895,10 +1895,12 @@ async def create_queen(
 
             from framework.agents.queen.reflection_agent import subscribe_reflection_triggers
 
+            # Memory work runs on the worker model when memory_reflection.model says so.
+            _memory_llm = session_manager.memory_llm(session) if session_manager is not None else session.llm
             _reflection_subs = await subscribe_reflection_triggers(
                 session.event_bus,
                 queen_dir,
-                session.llm,
+                _memory_llm,
                 global_memory_dir=global_dir,
                 queen_memory_dir=queen_mem_dir,
                 queen_id=session.queen_name,
@@ -1908,7 +1910,7 @@ async def create_queen(
             # few recent earlier sessions that predate it.
             from framework.agents.queen.timeline import subscribe_timeline_triggers
 
-            _reflection_subs += await subscribe_timeline_triggers(session.event_bus, queen_dir, session.llm)
+            _reflection_subs += await subscribe_timeline_triggers(session.event_bus, queen_dir, _memory_llm)
             # Session title, written by the worker model after the first turn.
             from framework.server.session_titles import subscribe_title_trigger
 

@@ -512,6 +512,17 @@ class SessionManager:
             **get_worker_llm_extra_kwargs(),
         )
 
+    def memory_llm(self, session: Session) -> Any:
+        """The model a session's memory work (reflection, timeline) runs on: the worker model
+        when ``memory_reflection.model`` is "worker" and one is set, else the session's own."""
+        from framework.config import get_memory_reflection_config
+
+        if get_memory_reflection_config().model == "worker":
+            worker = self.build_worker_llm()
+            if worker is not None:
+                return worker
+        return session.llm
+
     # ------------------------------------------------------------------
     # Session lifecycle
     # ------------------------------------------------------------------
@@ -1312,7 +1323,7 @@ class SessionManager:
                 task = asyncio.create_task(
                     run_shutdown_reflection(
                         session.queen_dir,
-                        session.llm,
+                        self.memory_llm(session),
                         global_memory_dir_override=global_mem_dir,
                         queen_memory_dir=queen_mem_dir,
                         queen_id=session.queen_name,
@@ -1330,7 +1341,7 @@ class SessionManager:
 
                 if get_memory_timeline_enabled():
                     timeline_task = asyncio.create_task(
-                        update_session_timeline(session.llm, session.queen_dir),
+                        update_session_timeline(self.memory_llm(session), session.queen_dir),
                         name=f"shutdown-timeline-{session_id}",
                     )
                     self._background_tasks.add(timeline_task)

@@ -2,6 +2,10 @@
 
 > Full, detailed release notes live in [`docs/releases/`](docs/releases/). The entries below summarize the architecturally significant releases; older entries follow.
 
+## v1.0.9 — Ask the Judge
+
+**New:** `ChannelHost.judge`, so a channel can ask the judge (the `judge` slot, e.g. TypeSafe Jev) its own yes/no question, for example whether the queen should speak up in a group where nobody addressed her. **Changed:** the stall check asks the judge through the same code; its behavior is unchanged. See [docs/releases/v1.0.9.md](docs/releases/v1.0.9.md).
+
 ## v1.0.8 — Turn Context
 
 **New:** turn context, so an installed package can show a queen something before each of her turns (the `hive.turn_context` entry point). **Fixed:** recall of past conversations reads Chinese instead of matching time stamps and sender headers; a failed model call that a gateway returns as a reply stays out of chat apps and the stall check. See [docs/releases/v1.0.8.md](docs/releases/v1.0.8.md).
